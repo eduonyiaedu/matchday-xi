@@ -1,0 +1,359 @@
+// Matchday XI — Prisma schema
+// See docs/matchday-xi-rulebook.md for the rules this schema implements.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------- Enums ----------
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum PlayerPosition {
+  GOALKEEPER
+  DEFENDER
+  MIDFIELDER
+  FORWARD
+}
+
+enum FixtureStatus {
+  SCHEDULED
+  LOCKED
+  LINEUPS_FETCHED
+  SCORED
+  POSTPONED
+  ABANDONED
+  VOIDED
+  NEEDS_MANUAL_REVIEW
+}
+
+enum PrivateLeagueTeamRule {
+  ANY_TEAM
+  SINGLE_LEAGUE
+  SINGLE_TEAM
+}
+
+enum MembershipStatus {
+  PENDING
+  APPROVED
+  DENIED
+}
+
+enum JobName {
+  SYNC_FIXTURES
+  SYNC_SQUADS
+  CHECK_LINEUPS
+  LOCK_SWEEP
+  DAILY_ROLLUP
+}
+
+enum JobStatus {
+  SUCCESS
+  FAILURE
+  PARTIAL
+}
+
+// ---------- Core models ----------
+
+/// Mirrors a Supabase auth.users row. id == Supabase auth UID.
+model User {
+  id                   String    @id
+  email                String    @unique
+  displayName          String
+  favoriteTeamId       String?
+  favoriteTeam         Team?     @relation(fields: [favoriteTeamId], references: [id])
+  /// Set the moment the user's first global/team prediction is submitted.
+  /// Null => team is freely changeable. Non-null => team-change requests are rejected server-side (rulebook §2 v2.1).
+  favoriteTeamLockedAt DateTime?
+  role                 Role      @default(USER)
+  currentStreak        Int       @default(0)
+  longestStreak        Int       @default(0)
+  lastLoginDate        DateTime? @db.Date
+  /// Denormalized for fast leaderboard queries; kept in sync at scoring time.
+  totalPoints          Int       @default(0)
+  perfectXiCount       Int       @default(0)
+  /// Manual admin flag; disqualifies from prize eligibility without zeroing accrued points (rulebook §10).
+  isFlaggedDuplicate   Boolean   @default(false)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  predictions          Prediction[]
+  dailyLogins          DailyLoginLog[]
+  monthlyEligibilities MonthlyPrizeEligibility[]
+  monthlyPrizeDrawsWon MonthlyPrizeDraw[]
+  createdLeagues       PrivateLeague[]           @relation("LeagueCreator")
+  leagueMemberships    PrivateLeagueMembership[]
+
+  @@index([favoriteTeamId])
+  @@index([totalPoints])
+}
+
+/// The 20 Premier League clubs plus any non-PL opponents that appear in FA Cup / EFL Cup fixtures.
+model Team {
+  id                  String   @id @default(uuid())
+  /// football-data.org team id
+  externalId          Int      @unique
+  name                String
+  shortName           String?
+  crestUrl            String?
+  /// True for the 20 clubs users may select as their favorite.
+  isPremierLeagueClub Boolean   @default(false)
+  isActive            Boolean   @default(true)
+  /// Last time this team's squad was pulled from football-data.org. Used to batch squad syncs
+  /// (oldest-synced-first, a few teams per run) so a single sync job never bursts past
+  /// football-data.org's free-tier 10-requests/minute cap — see lib/services/fixture-sync.ts.
+  squadLastSyncedAt   DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  squadPlayers      SquadPlayer[]
+  usersFavoring     User[]
+  homeFixtures      Fixture[]         @relation("HomeTeam")
+  awayFixtures      Fixture[]         @relation("AwayTeam")
+  predictions       Prediction[]
+  officialLineups   OfficialLineup[]
+  restrictedLeagues PrivateLeague[]   @relation("SingleTeamRestriction")
+
+  @@index([isPremierLeagueClub])
+}
+
+/// One row per player per team. Synced live, never hardcoded (rulebook §2).
+model SquadPlayer {
+  id             String         @id @default(uuid())
+  teamId         String
+  team           Team           @relation(fields: [teamId], references: [id])
+  /// football-data.org person id
+  footballDataId Int            @unique
+  /// API-Football player id, resolved lazily via name+team match (see lib/player-matching.ts)
+  apiFootballId  Int?           @unique
+  name           String
+  /// Tagged position — only used to gate the GK slot (rulebook §4); outfield slots are free-form.
+  position       PlayerPosition
+  photoUrl       String?
+  /// Deactivated (not deleted) across transfer windows to preserve prediction history.
+  isActive       Boolean        @default(true)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  predictionSlots       PredictionSlot[]
+  officialLineupEntries OfficialLineupPlayer[]
+
+  @@index([teamId])
+  @@index([position])
+}
+
+/// Premier League / FA Cup / EFL Cup (rulebook §3).
+model Competition {
+  id         String @id @default(uuid())
+  /// football-data.org competition code, e.g. "PL", "FAC", "EFL"
+  externalId String @unique
+  name       String
+
+  fixtures          Fixture[]
+  restrictedByLeagues PrivateLeague[]
+}
+
+model Fixture {
+  id                   String        @id @default(uuid())
+  /// football-data.org match id
+  externalId           Int           @unique
+  /// API-Football fixture id, resolved by date+team match once known
+  apiFootballFixtureId Int?          @unique
+  competitionId        String
+  competition          Competition   @relation(fields: [competitionId], references: [id])
+  homeTeamId           String
+  homeTeam             Team          @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  awayTeamId           String
+  awayTeam             Team          @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  /// Source of truth for locking, from football-data.org.
+  kickoffAt            DateTime
+  /// Stored copy of kickoffAt - 2h, for indexed queries (rulebook §5).
+  lockAt               DateTime
+  status               FixtureStatus @default(SCHEDULED)
+  /// Count of lineup-check cron attempts so far (bounded retry window, rulebook §6).
+  lineupCheckAttempts  Int           @default(0)
+  homeScore            Int?
+  awayScore            Int?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  predictions     Prediction[]
+  officialLineups OfficialLineup[]
+
+  @@index([kickoffAt])
+  @@index([lockAt])
+  @@index([status])
+}
+
+/// A user's 11-player guess for one fixture. null privateLeagueId = global/per-team;
+/// non-null = a private-league-scoped prediction with entirely separate scoring (rulebook §12b).
+model Prediction {
+  id              String         @id @default(uuid())
+  userId          String
+  user            User           @relation(fields: [userId], references: [id])
+  fixtureId       String
+  fixture         Fixture        @relation(fields: [fixtureId], references: [id])
+  /// Denormalized at submission time so a later team change can't corrupt history.
+  teamId          String
+  team            Team           @relation(fields: [teamId], references: [id])
+  privateLeagueId String?
+  privateLeague   PrivateLeague? @relation(fields: [privateLeagueId], references: [id])
+  /// Postgres unique constraints treat NULL as distinct from every other NULL, so a compound
+  /// unique on (userId, fixtureId, privateLeagueId) would NOT stop two "global" (null) rows for
+  /// the same user+fixture. This mirrors privateLeagueId but substitutes the "GLOBAL" sentinel
+  /// for null so the unique constraint below actually enforces one prediction per scope.
+  /// Always set to `privateLeagueId ?? "GLOBAL"` — see lib/prediction-scope.ts.
+  scopeKey        String
+  submittedAt     DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  pointsAwarded   Int?
+  isPerfectXi     Boolean?
+  scoredAt        DateTime?
+
+  slots PredictionSlot[]
+
+  @@unique([userId, fixtureId, scopeKey])
+  @@index([fixtureId])
+  @@index([userId])
+  @@index([privateLeagueId])
+}
+
+/// 11 rows per Prediction: slotIndex 0 = GK, 1-10 = free-form outfield.
+model PredictionSlot {
+  id            String      @id @default(uuid())
+  predictionId  String
+  prediction    Prediction  @relation(fields: [predictionId], references: [id], onDelete: Cascade)
+  slotIndex     Int
+  squadPlayerId String
+  squadPlayer   SquadPlayer @relation(fields: [squadPlayerId], references: [id])
+  /// Set at scoring time.
+  isCorrect     Boolean?
+
+  @@unique([predictionId, slotIndex])
+  @@unique([predictionId, squadPlayerId])
+}
+
+/// The confirmed XI fetched from API-Football, keyed by (fixture, team) since either side's fans may be predicting.
+model OfficialLineup {
+  id        String   @id @default(uuid())
+  fixtureId String
+  fixture   Fixture  @relation(fields: [fixtureId], references: [id])
+  teamId    String
+  team      Team     @relation(fields: [teamId], references: [id])
+  formation String?
+  fetchedAt DateTime @default(now())
+
+  players OfficialLineupPlayer[]
+
+  @@unique([fixtureId, teamId])
+}
+
+model OfficialLineupPlayer {
+  id                     String         @id @default(uuid())
+  officialLineupId       String
+  officialLineup         OfficialLineup @relation(fields: [officialLineupId], references: [id], onDelete: Cascade)
+  /// Null when player-matching couldn't confidently resolve this name — surfaced on the admin page.
+  squadPlayerId          String?
+  squadPlayer            SquadPlayer?   @relation(fields: [squadPlayerId], references: [id])
+  rawApiFootballPlayerId Int
+  rawName                String
+  isGoalkeeper           Boolean        @default(false)
+
+  @@index([officialLineupId])
+}
+
+/// One row the first time a user is seen each calendar day. Drives streaks + monthly prize eligibility.
+model DailyLoginLog {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  loginDate DateTime @db.Date
+
+  @@unique([userId, loginDate])
+}
+
+/// Computed once per month-end per user (rulebook §9).
+model MonthlyPrizeEligibility {
+  id                     String   @id @default(uuid())
+  userId                 String
+  user                   User     @relation(fields: [userId], references: [id])
+  /// "YYYY-MM"
+  month                  String
+  predictedEveryMatchday Boolean  @default(false)
+  loggedInEveryDay       Boolean  @default(false)
+  isEligible             Boolean  @default(false)
+  computedAt             DateTime @default(now())
+
+  @@unique([userId, month])
+}
+
+model MonthlyPrizeDraw {
+  id            String    @id @default(uuid())
+  /// "YYYY-MM"
+  month         String    @unique
+  winnerUserId  String?
+  winner        User?     @relation(fields: [winnerUserId], references: [id])
+  eligibleCount Int       @default(0)
+  drawnAt       DateTime?
+  createdAt     DateTime  @default(now())
+}
+
+/// Free-tier private competitions (rulebook §12b). Paid fields exist but are hard-disabled in this build.
+model PrivateLeague {
+  id                      String                @id @default(uuid())
+  creatorId               String
+  creator                 User                  @relation("LeagueCreator", fields: [creatorId], references: [id])
+  name                    String
+  slug                    String                @unique
+  teamRule                PrivateLeagueTeamRule @default(ANY_TEAM)
+  restrictedCompetitionId String?
+  restrictedCompetition   Competition?          @relation(fields: [restrictedCompetitionId], references: [id])
+  restrictedTeamId        String?
+  restrictedTeam          Team?                 @relation("SingleTeamRestriction", fields: [restrictedTeamId], references: [id])
+  /// Custom active window, does not need to match the full season.
+  startDate               DateTime
+  endDate                 DateTime
+  /// Hard-disabled: no code path in this build can set this true. Roadmap-only per rulebook §12b.
+  isPaid                  Boolean               @default(false)
+  /// Unused stub column — no payment code path exists yet.
+  entryFee                Decimal?              @db.Decimal(10, 2)
+  createdAt               DateTime              @default(now())
+
+  memberships PrivateLeagueMembership[]
+  predictions Prediction[]
+
+  @@index([creatorId])
+}
+
+model PrivateLeagueMembership {
+  id          String           @id @default(uuid())
+  leagueId    String
+  league      PrivateLeague    @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User             @relation(fields: [userId], references: [id])
+  status      MembershipStatus @default(PENDING)
+  requestedAt DateTime         @default(now())
+  respondedAt DateTime?
+
+  @@unique([leagueId, userId])
+}
+
+/// Logs every cron execution so the founder has something to check if automation seems stuck.
+model JobRun {
+  id         String     @id @default(uuid())
+  jobName    JobName
+  startedAt  DateTime   @default(now())
+  finishedAt DateTime?
+  status     JobStatus?
+  details    String?
+
+  @@index([jobName, startedAt])
+}

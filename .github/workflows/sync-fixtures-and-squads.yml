@@ -1,0 +1,27 @@
+name: Sync fixtures and squads
+
+on:
+  schedule:
+    # Every 6 hours. football-data.org free tier is ~10 req/min — this job is far under that.
+    - cron: "0 */6 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  sync-squads:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call /api/cron/sync-squads
+        run: |
+          curl --fail --show-error --silent \
+            -X POST "${{ secrets.APP_BASE_URL }}/api/cron/sync-squads" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+
+  sync-fixtures:
+    needs: sync-squads
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call /api/cron/sync-fixtures
+        run: |
+          curl --fail --show-error --silent \
+            -X POST "${{ secrets.APP_BASE_URL }}/api/cron/sync-fixtures" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"

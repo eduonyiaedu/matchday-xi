@@ -1,0 +1,37 @@
+name: Prediction lifecycle (lock sweep + lineup check + daily rollup)
+
+on:
+  schedule:
+    # Every 5 minutes — GitHub Actions' minimum cron granularity. lock-sweep and check-lineups
+    # are cheap, time-gated queries; daily-rollup no-ops on every call except the 1st of the
+    # month (UTC), see lib/prizes.ts.
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  lock-sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call /api/cron/lock-sweep
+        run: |
+          curl --fail --show-error --silent \
+            -X POST "${{ secrets.APP_BASE_URL }}/api/cron/lock-sweep" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+
+  check-lineups:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call /api/cron/check-lineups
+        run: |
+          curl --fail --show-error --silent \
+            -X POST "${{ secrets.APP_BASE_URL }}/api/cron/check-lineups" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+
+  daily-rollup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call /api/cron/daily-rollup
+        run: |
+          curl --fail --show-error --silent \
+            -X POST "${{ secrets.APP_BASE_URL }}/api/cron/daily-rollup" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
