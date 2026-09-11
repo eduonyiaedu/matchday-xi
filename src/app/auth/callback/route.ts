@@ -6,11 +6,12 @@ export const runtime = "nodejs";
 /** Handles the redirect back from a magic-link email or an OAuth (Google) sign-in. */
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
-  const next = request.nextUrl.searchParams.get("next") ?? "/fixtures";
+  const next = request.nextUrl.searchParams.get("next") ?? "/home";
   // Only present when this leg started from the signup screen's Google button — see
   // AuthForm.handleGoogle, which can't attach user_metadata to the outbound OAuth request itself.
   const ageConsent = request.nextUrl.searchParams.get("ageConsent");
   const tosConsent = request.nextUrl.searchParams.get("tosConsent");
+  const username = request.nextUrl.searchParams.get("username");
 
   if (code) {
     const supabase = await createClient();
@@ -18,7 +19,7 @@ export async function GET(request: NextRequest) {
     if (!error) {
       if (ageConsent && tosConsent) {
         await supabase.auth.updateUser({
-          data: { ageConfirmedAt: ageConsent, tosConsentedAt: tosConsent },
+          data: { ageConfirmedAt: ageConsent, tosConsentedAt: tosConsent, ...(username ? { username } : {}) },
         });
       }
       return NextResponse.redirect(new URL(next, request.url));

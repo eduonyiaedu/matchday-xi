@@ -1,8 +1,11 @@
 import { notFound } from "next/navigation";
 import { getOrCreateCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { PitchBuilder } from "@/components/predict/pitch-builder";
+import { PitchBuilder, type Formation } from "@/components/predict/pitch-builder";
 import { GLOBAL_SCOPE } from "@/lib/prediction-scope";
+import { getNextEligibleFixture, isPredictionWindowOpen, predictionOpensAt } from "@/lib/next-fixture";
+import { getTeamColors } from "@/lib/team-colors";
+import { LocalTime } from "@/components/ui/local-time";
 
 export default async function PredictPage({
   params,
@@ -22,10 +25,21 @@ export default async function PredictPage({
     notFound();
   }
 
+  const locked = new Date() >= fixture.lockAt;
+
+  // Defense in depth — the API is the authoritative gate, but a stale/guessed link shouldn't even
+  // render a pitch builder for a fixture that would just 403 on submit.
+  let windowNotYetOpen = false;
+  if (!locked) {
+    const nextFixture = await getNextEligibleFixture(user.favoriteTeamId);
+    if (!nextFixture || nextFixture.id !== fixture.id) notFound();
+    windowNotYetOpen = !isPredictionWindowOpen(fixture);
+  }
+
   const squad = await prisma.squadPlayer.findMany({
     where: { teamId: user.favoriteTeamId, isActive: true },
     orderBy: { name: "asc" },
-    select: { id: true, name: true, position: true, photoUrl: true },
+    select: { id: true, name: true, position: true, shirtNumber: true, squadTier: true, photoUrl: true },
   });
 
   const existing = await prisma.prediction.findUnique({
@@ -33,9 +47,9 @@ export default async function PredictPage({
     include: { slots: true },
   });
 
-  const locked = new Date() >= fixture.lockAt;
   const opponent = fixture.homeTeamId === user.favoriteTeamId ? fixture.awayTeam : fixture.homeTeam;
   const isHome = fixture.homeTeamId === user.favoriteTeamId;
+  const myTeam = isHome ? fixture.homeTeam : fixture.awayTeam;
 
   return (
     <div className="flex flex-col gap-4">
@@ -44,24 +58,33 @@ export default async function PredictPage({
           {isHome ? "vs" : "@"} {opponent.name}
         </h1>
         <p className="text-sm text-muted-foreground">
-          {fixture.competition.name} · Kickoff {fixture.kickoffAt.toLocaleString()} · Locks{" "}
-          {fixture.lockAt.toLocaleString()}
+          {fixture.competition.name} · Kickoff <LocalTime iso={fixture.kickoffAt.toISOString()} /> · Locks{" "}
+          <LocalTime iso={fixture.lockAt.toISOString()} />
         </p>
       </div>
-      <PitchBuilder
-        fixtureId={fixture.id}
-        teamId={user.favoriteTeamId}
-        squad={squad}
-        locked={locked}
-        existingSlots={existing?.slots.map((s) => ({
-          slotIndex: s.slotIndex,
-          squadPlayerId: s.squadPlayerId,
-          isCorrect: s.isCorrect,
-        })) ?? []}
-        pointsAwarded={existing?.pointsAwarded ?? null}
-        isPerfectXi={existing?.isPerfectXi ?? null}
-        scored={fixture.status === "SCORED"}
-      />
+      {windowNotYetOpen ? (
+        <p className="text-sm text-muted-foreground">
+          Predictions for this fixture open <LocalTime iso={predictionOpensAt(fixture).toISOString()} /> —
+          24 hours before kickoff.
+        </p>
+      ) : (
+        <PitchBuilder
+          fixtureId={fixture.id}
+          teamId={user.favoriteTeamId}
+          squad={squad}
+          locked={locked}
+          existingSlots={existing?.slots.map((s) => ({
+            slotIndex: s.slotIndex,
+            squadPlayerId: s.squadPlayerId,
+            isCorrect: s.isCorrect,
+          })) ?? []}
+          initialFormation={(existing?.formation as Formation | undefined) ?? "4-4-2"}
+          teamColors={getTeamColors(myTeam.externalId)}
+          pointsAwarded={existing?.pointsAwarded ?? null}
+          isPerfectXi={existing?.isPerfectXi ?? null}
+          scored={fixture.status === "SCORED"}
+        />
+      )}
     </div>
   );
 }

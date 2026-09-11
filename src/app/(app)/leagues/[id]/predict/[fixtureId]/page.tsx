@@ -1,29 +1,31 @@
 import { notFound } from "next/navigation";
 import { getOrCreateCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { PitchBuilder } from "@/components/predict/pitch-builder";
+import { PitchBuilder, type Formation } from "@/components/predict/pitch-builder";
 import { scopeKeyFor } from "@/lib/prediction-scope";
+import { getNextEligibleFixture, isPredictionWindowOpen, predictionOpensAt } from "@/lib/next-fixture";
+import { getTeamColors } from "@/lib/team-colors";
+import { LocalTime } from "@/components/ui/local-time";
 
 export default async function LeaguePredictPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ id: string; fixtureId: string }>;
-  searchParams: Promise<{ teamId?: string }>;
 }) {
   const { id: leagueId, fixtureId } = await params;
-  const { teamId } = await searchParams;
   const user = await getOrCreateCurrentUser();
-  if (!user || !teamId) return null;
+  if (!user) return null;
 
   const league = await prisma.privateLeague.findUnique({ where: { id: leagueId } });
   if (!league) notFound();
 
+  // The member's team is now permanent, set at join/creation — never trust a client-supplied
+  // teamId (the old ?teamId= query param let a member hand-edit the URL to another team).
   const membership = await prisma.privateLeagueMembership.findUnique({
     where: { leagueId_userId: { leagueId, userId: user.id } },
   });
-  const isApproved = league.creatorId === user.id || membership?.status === "APPROVED";
-  if (!isApproved) notFound();
+  if (!membership || membership.status !== "APPROVED" || !membership.teamId) notFound();
+  const teamId = membership.teamId;
 
   const fixture = await prisma.fixture.findUnique({
     where: { id: fixtureId },
@@ -31,12 +33,21 @@ export default async function LeaguePredictPage({
   });
   if (!fixture) notFound();
   if (fixture.homeTeamId !== teamId && fixture.awayTeamId !== teamId) notFound();
-  if (league.teamRule === "SINGLE_TEAM" && league.restrictedTeamId !== teamId) notFound();
+
+  const locked = new Date() >= fixture.lockAt;
+
+  // Defense in depth, same reasoning as the global predict page — the API is authoritative.
+  let windowNotYetOpen = false;
+  if (!locked) {
+    const nextFixture = await getNextEligibleFixture(teamId);
+    if (!nextFixture || nextFixture.id !== fixture.id) notFound();
+    windowNotYetOpen = !isPredictionWindowOpen(fixture);
+  }
 
   const squad = await prisma.squadPlayer.findMany({
     where: { teamId, isActive: true },
     orderBy: { name: "asc" },
-    select: { id: true, name: true, position: true, photoUrl: true },
+    select: { id: true, name: true, position: true, shirtNumber: true, squadTier: true, photoUrl: true },
   });
 
   const existing = await prisma.prediction.findUnique({
@@ -44,7 +55,6 @@ export default async function LeaguePredictPage({
     include: { slots: true },
   });
 
-  const locked = new Date() >= fixture.lockAt;
   const team = fixture.homeTeamId === teamId ? fixture.homeTeam : fixture.awayTeam;
   const opponent = fixture.homeTeamId === teamId ? fixture.awayTeam : fixture.homeTeam;
 
@@ -55,24 +65,34 @@ export default async function LeaguePredictPage({
           {team.name} vs {opponent.name}
         </h1>
         <p className="text-sm text-muted-foreground">
-          {league.name} · {fixture.competition.name} · Kickoff {fixture.kickoffAt.toLocaleString()}
+          {league.name} · {fixture.competition.name} · Kickoff{" "}
+          <LocalTime iso={fixture.kickoffAt.toISOString()} />
         </p>
       </div>
-      <PitchBuilder
-        fixtureId={fixture.id}
-        teamId={teamId}
-        privateLeagueId={leagueId}
-        squad={squad}
-        locked={locked}
-        existingSlots={existing?.slots.map((s) => ({
-          slotIndex: s.slotIndex,
-          squadPlayerId: s.squadPlayerId,
-          isCorrect: s.isCorrect,
-        })) ?? []}
-        pointsAwarded={existing?.pointsAwarded ?? null}
-        isPerfectXi={existing?.isPerfectXi ?? null}
-        scored={fixture.status === "SCORED"}
-      />
+      {windowNotYetOpen ? (
+        <p className="text-sm text-muted-foreground">
+          Predictions for this fixture open <LocalTime iso={predictionOpensAt(fixture).toISOString()} /> —
+          24 hours before kickoff.
+        </p>
+      ) : (
+        <PitchBuilder
+          fixtureId={fixture.id}
+          teamId={teamId}
+          privateLeagueId={leagueId}
+          squad={squad}
+          locked={locked}
+          existingSlots={existing?.slots.map((s) => ({
+            slotIndex: s.slotIndex,
+            squadPlayerId: s.squadPlayerId,
+            isCorrect: s.isCorrect,
+          })) ?? []}
+          initialFormation={(existing?.formation as Formation | undefined) ?? "4-4-2"}
+          teamColors={getTeamColors(team.externalId)}
+          pointsAwarded={existing?.pointsAwarded ?? null}
+          isPerfectXi={existing?.isPerfectXi ?? null}
+          scored={fixture.status === "SCORED"}
+        />
+      )}
     </div>
   );
 }

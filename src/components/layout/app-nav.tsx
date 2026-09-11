@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 const LINKS = [
+  { href: "/home", label: "Home" },
   { href: "/fixtures", label: "Fixtures" },
   { href: "/history", label: "History" },
   { href: "/leaderboards/global", label: "Leaderboards" },
@@ -17,11 +18,13 @@ const LINKS = [
 
 export function AppNav({
   displayName,
+  username,
   currentStreak,
   totalPoints,
   role,
 }: {
   displayName: string;
+  username: string;
   currentStreak: number;
   totalPoints: number;
   role: string;
@@ -39,7 +42,7 @@ export function AppNav({
   return (
     <header className="border-b">
       <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-4 p-4">
-        <Link href="/fixtures" className="text-lg font-bold">
+        <Link href="/home" className="text-lg font-bold">
           Matchday XI
         </Link>
         <nav className="flex flex-1 flex-wrap gap-1">
@@ -70,7 +73,9 @@ export function AppNav({
         <div className="flex items-center gap-2 text-sm">
           <Badge variant="secondary">🔥 {currentStreak}d</Badge>
           <Badge variant="secondary">{totalPoints} pts</Badge>
-          <span className="hidden text-muted-foreground sm:inline">{displayName}</span>
+          <span className="hidden text-muted-foreground sm:inline">
+            {displayName} <span className="text-xs">@{username}</span>
+          </span>
           <Button variant="ghost" size="sm" onClick={logout}>
             Log out
           </Button>

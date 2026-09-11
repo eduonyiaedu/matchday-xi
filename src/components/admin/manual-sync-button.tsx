@@ -36,6 +36,7 @@ export function ManualSyncButtons() {
     <div className="flex gap-2">
       <SyncButton label="Sync squads" endpoint="/api/admin/sync-squads" />
       <SyncButton label="Sync fixtures" endpoint="/api/admin/sync-fixtures" />
+      <SyncButton label="Sync shirt numbers / U21" endpoint="/api/admin/sync-shirt-numbers" />
     </div>
   );
 }

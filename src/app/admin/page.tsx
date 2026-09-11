@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { ManualSyncButtons } from "@/components/admin/manual-sync-button";
 import { DuplicateFlagList } from "@/components/admin/duplicate-flag-list";
 import { Footer } from "@/components/layout/footer";
+import { LocalTime } from "@/components/ui/local-time";
 
 export default async function AdminPage() {
   const user = await getOrCreateCurrentUser();
@@ -43,7 +44,7 @@ export default async function AdminPage() {
             <CardContent className="flex flex-col gap-1 text-sm">
               {unresolvedLineups.map((f) => (
                 <p key={f.id}>
-                  {f.homeTeam.name} vs {f.awayTeam.name} — {f.kickoffAt.toLocaleString()}
+                  {f.homeTeam.name} vs {f.awayTeam.name} — <LocalTime iso={f.kickoffAt.toISOString()} />
                 </p>
               ))}
             </CardContent>
@@ -58,7 +59,9 @@ export default async function AdminPage() {
             {recentJobs.map((job) => (
               <div key={job.id} className="flex items-center justify-between border-b pb-1 last:border-0">
                 <span>{job.jobName}</span>
-                <span className="text-muted-foreground">{job.startedAt.toLocaleString()}</span>
+                <span className="text-muted-foreground">
+                  <LocalTime iso={job.startedAt.toISOString()} />
+                </span>
                 <Badge variant={job.status === "FAILURE" ? "destructive" : "secondary"}>
                   {job.status ?? "running"}
                 </Badge>

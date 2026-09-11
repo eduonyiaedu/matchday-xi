@@ -34,7 +34,7 @@ export function TeamPicker({ teams }: { teams: TeamOption[] }) {
       setError(body.error ?? "Something went wrong.");
       return;
     }
-    router.push("/fixtures");
+    router.push("/home");
     router.refresh();
   }
 

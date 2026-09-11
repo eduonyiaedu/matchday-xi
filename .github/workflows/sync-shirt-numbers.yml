@@ -1,0 +1,21 @@
+name: Sync shirt numbers and U21 squads
+
+# Deliberately its own workflow, not folded into sync-fixtures-and-squads.yml — that one runs
+# every 6 hours, but this job draws from API-Football's shared ~100-req/day budget (also used by
+# the time-critical lineup-checking cron), so it runs only once a day. No hard `needs:` on
+# sync-squads is possible across two different schedules, but that's fine in practice: senior
+# squads are refreshed 4x/day by that job, so they're always well ahead of this once-daily run.
+on:
+  schedule:
+    - cron: "0 3 * * *" # once daily, 03:00 UTC — off-peak, clear of any matchday lineup-checking
+  workflow_dispatch: {}
+
+jobs:
+  sync-shirt-numbers:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call /api/cron/sync-shirt-numbers
+        run: |
+          curl --fail --show-error --silent \
+            -X POST "${{ secrets.APP_BASE_URL }}/api/cron/sync-shirt-numbers" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"

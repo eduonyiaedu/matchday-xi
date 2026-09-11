@@ -11,12 +11,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Jersey } from "@/components/predict/jersey";
 import { cn } from "@/lib/utils";
 
 interface SquadPlayer {
   id: string;
   name: string;
   position: "GOALKEEPER" | "DEFENDER" | "MIDFIELDER" | "FORWARD";
+  shirtNumber: number | null;
+  squadTier: "SENIOR" | "U21";
   photoUrl: string | null;
 }
 
@@ -26,20 +30,78 @@ interface ExistingSlot {
   isCorrect: boolean | null;
 }
 
-// Purely visual default 1-4-4-2 layout — slotIndex 0 is always GK; 1-10 are free-form outfield,
-// this is just where they're drawn on the pitch (rulebook §4).
-const SLOT_POSITIONS: { slotIndex: number; top: string; left: string }[] = [
-  { slotIndex: 0, top: "92%", left: "50%" },
-  { slotIndex: 1, top: "72%", left: "14%" },
-  { slotIndex: 2, top: "72%", left: "38%" },
-  { slotIndex: 3, top: "72%", left: "62%" },
-  { slotIndex: 4, top: "72%", left: "86%" },
-  { slotIndex: 5, top: "46%", left: "14%" },
-  { slotIndex: 6, top: "46%", left: "38%" },
-  { slotIndex: 7, top: "46%", left: "62%" },
-  { slotIndex: 8, top: "46%", left: "86%" },
-  { slotIndex: 9, top: "18%", left: "36%" },
-  { slotIndex: 10, top: "18%", left: "64%" },
+export const FORMATIONS = ["4-4-2", "4-3-3", "4-2-3-1", "3-4-3"] as const;
+export type Formation = (typeof FORMATIONS)[number];
+
+interface SlotPosition {
+  slotIndex: number;
+  top: string;
+  left: string;
+}
+
+// Purely visual layouts — slotIndex 0 is always GK; 1-10 are free-form outfield regardless of
+// formation. Switching formations only redraws where each slotIndex is drawn on the pitch, it
+// never reassigns which player occupies which slot, so scoring (player-identity only, see
+// lib/scoring.ts) is completely unaffected by this choice.
+const FORMATION_LAYOUTS: Record<Formation, SlotPosition[]> = {
+  "4-4-2": [
+    { slotIndex: 0, top: "92%", left: "50%" },
+    { slotIndex: 1, top: "72%", left: "14%" },
+    { slotIndex: 2, top: "72%", left: "38%" },
+    { slotIndex: 3, top: "72%", left: "62%" },
+    { slotIndex: 4, top: "72%", left: "86%" },
+    { slotIndex: 5, top: "46%", left: "14%" },
+    { slotIndex: 6, top: "46%", left: "38%" },
+    { slotIndex: 7, top: "46%", left: "62%" },
+    { slotIndex: 8, top: "46%", left: "86%" },
+    { slotIndex: 9, top: "18%", left: "36%" },
+    { slotIndex: 10, top: "18%", left: "64%" },
+  ],
+  "4-3-3": [
+    { slotIndex: 0, top: "92%", left: "50%" },
+    { slotIndex: 1, top: "72%", left: "14%" },
+    { slotIndex: 2, top: "72%", left: "38%" },
+    { slotIndex: 3, top: "72%", left: "62%" },
+    { slotIndex: 4, top: "72%", left: "86%" },
+    { slotIndex: 5, top: "50%", left: "25%" },
+    { slotIndex: 6, top: "50%", left: "50%" },
+    { slotIndex: 7, top: "50%", left: "75%" },
+    { slotIndex: 8, top: "20%", left: "20%" },
+    { slotIndex: 9, top: "20%", left: "50%" },
+    { slotIndex: 10, top: "20%", left: "80%" },
+  ],
+  "4-2-3-1": [
+    { slotIndex: 0, top: "92%", left: "50%" },
+    { slotIndex: 1, top: "74%", left: "14%" },
+    { slotIndex: 2, top: "74%", left: "38%" },
+    { slotIndex: 3, top: "74%", left: "62%" },
+    { slotIndex: 4, top: "74%", left: "86%" },
+    { slotIndex: 5, top: "56%", left: "35%" },
+    { slotIndex: 6, top: "56%", left: "65%" },
+    { slotIndex: 7, top: "36%", left: "20%" },
+    { slotIndex: 8, top: "36%", left: "50%" },
+    { slotIndex: 9, top: "36%", left: "80%" },
+    { slotIndex: 10, top: "16%", left: "50%" },
+  ],
+  "3-4-3": [
+    { slotIndex: 0, top: "92%", left: "50%" },
+    { slotIndex: 1, top: "74%", left: "25%" },
+    { slotIndex: 2, top: "74%", left: "50%" },
+    { slotIndex: 3, top: "74%", left: "75%" },
+    { slotIndex: 4, top: "50%", left: "14%" },
+    { slotIndex: 5, top: "50%", left: "38%" },
+    { slotIndex: 6, top: "50%", left: "62%" },
+    { slotIndex: 7, top: "50%", left: "86%" },
+    { slotIndex: 8, top: "20%", left: "20%" },
+    { slotIndex: 9, top: "20%", left: "50%" },
+    { slotIndex: 10, top: "20%", left: "80%" },
+  ],
+};
+
+const OUTFIELD_POSITION_LABELS: { position: SquadPlayer["position"]; label: string }[] = [
+  { position: "DEFENDER", label: "Defenders" },
+  { position: "MIDFIELDER", label: "Midfielders" },
+  { position: "FORWARD", label: "Forwards" },
 ];
 
 export function PitchBuilder({
@@ -49,6 +111,8 @@ export function PitchBuilder({
   squad,
   locked,
   existingSlots,
+  initialFormation = "4-4-2",
+  teamColors,
   pointsAwarded,
   isPerfectXi,
   scored,
@@ -59,11 +123,14 @@ export function PitchBuilder({
   squad: SquadPlayer[];
   locked: boolean;
   existingSlots: ExistingSlot[];
+  initialFormation?: Formation;
+  teamColors: { primary: string; secondary: string };
   pointsAwarded: number | null;
   isPerfectXi: boolean | null;
   scored: boolean;
 }) {
   const router = useRouter();
+  const [formation, setFormation] = useState<Formation>(initialFormation);
   const [slots, setSlots] = useState<Record<number, string | null>>(() => {
     const initial: Record<number, string | null> = {};
     for (let i = 0; i <= 10; i++) initial[i] = null;
@@ -88,6 +155,26 @@ export function PitchBuilder({
     });
   }
 
+  // Senior players grouped by position first (GK slot: just goalkeepers, no sub-groups needed),
+  // followed by a single separate "Under 21" section — not further subgrouped by position.
+  function groupedPlayersFor(slotIndex: number): { label: string; players: SquadPlayer[] }[] {
+    const available = availablePlayersFor(slotIndex);
+    const senior = available.filter((p) => p.squadTier === "SENIOR");
+    const u21 = available.filter((p) => p.squadTier === "U21");
+
+    const groups: { label: string; players: SquadPlayer[] }[] = [];
+    if (slotIndex === 0) {
+      if (senior.length > 0) groups.push({ label: "Goalkeepers", players: senior });
+    } else {
+      for (const { position, label } of OUTFIELD_POSITION_LABELS) {
+        const players = senior.filter((p) => p.position === position);
+        if (players.length > 0) groups.push({ label, players });
+      }
+    }
+    if (u21.length > 0) groups.push({ label: "Under 21", players: u21 });
+    return groups;
+  }
+
   function selectPlayer(slotIndex: number, playerId: string) {
     setSlots((prev) => ({ ...prev, [slotIndex]: playerId }));
     setPickerSlot(null);
@@ -102,6 +189,7 @@ export function PitchBuilder({
         fixtureId,
         teamId,
         privateLeagueId,
+        formation,
         slots: Object.entries(slots).map(([slotIndex, squadPlayerId]) => ({
           slotIndex: Number(slotIndex),
           squadPlayerId,
@@ -119,6 +207,7 @@ export function PitchBuilder({
   }
 
   const correctBySlot = new Map(existingSlots.map((s) => [s.slotIndex, s.isCorrect]));
+  const slotPositions = FORMATION_LAYOUTS[formation];
 
   return (
     <div className="flex flex-col gap-4">
@@ -129,11 +218,30 @@ export function PitchBuilder({
         </div>
       )}
 
+      {!locked && (
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium">Formation</span>
+          <Select value={formation} onValueChange={(v) => setFormation(v as Formation)}>
+            <SelectTrigger className="w-32">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {FORMATIONS.map((f) => (
+                <SelectItem key={f} value={f}>
+                  {f}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <span className="text-xs text-muted-foreground">Visual only — doesn&apos;t affect scoring.</span>
+        </div>
+      )}
+
       <div className="relative mx-auto aspect-[2/3] w-full max-w-md rounded-lg bg-gradient-to-b from-green-600 to-green-700">
         <div className="absolute inset-4 rounded border-2 border-white/40" />
         <div className="absolute top-1/2 left-1/2 h-24 w-24 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/40" />
 
-        {SLOT_POSITIONS.map(({ slotIndex, top, left }) => {
+        {slotPositions.map(({ slotIndex, top, left }) => {
           const playerId = slots[slotIndex];
           const player = playerId ? playerById.get(playerId) : null;
           const isCorrect = correctBySlot.get(slotIndex);
@@ -151,13 +259,17 @@ export function PitchBuilder({
             >
               <div
                 className={cn(
-                  "flex h-10 w-10 items-center justify-center rounded-full border-2 bg-white text-xs font-bold shadow",
-                  player ? "border-slate-900" : "border-dashed border-slate-400 text-slate-400",
-                  scored && isCorrect === true && "border-emerald-500 bg-emerald-100",
-                  scored && isCorrect === false && "border-red-400 bg-red-50 opacity-70",
+                  "flex items-center justify-center rounded-full",
+                  scored && isCorrect === true && "ring-2 ring-emerald-500",
+                  scored && isCorrect === false && "opacity-70 ring-2 ring-red-400",
                 )}
               >
-                {slotIndex === 0 ? "GK" : slotIndex}
+                <Jersey
+                  primary={teamColors.primary}
+                  secondary={teamColors.secondary}
+                  number={player?.shirtNumber ?? null}
+                  empty={!player}
+                />
               </div>
               <span className="max-w-20 truncate rounded bg-black/60 px-1 text-[10px] text-white">
                 {player ? player.name : "Pick"}
@@ -190,18 +302,30 @@ export function PitchBuilder({
           </DialogHeader>
           <div className="grid max-h-96 gap-1 overflow-y-auto">
             {pickerSlot !== null &&
-              availablePlayersFor(pickerSlot).map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => selectPlayer(pickerSlot, p.id)}
-                  className="flex items-center justify-between rounded-md px-3 py-2 text-left text-sm hover:bg-muted"
-                >
-                  <span>{p.name}</span>
-                  <span className="text-xs text-muted-foreground">{p.position}</span>
-                </button>
+              groupedPlayersFor(pickerSlot).map((group) => (
+                <div key={group.label} className="flex flex-col gap-0.5">
+                  <p className="mt-2 px-3 text-xs font-semibold tracking-wide text-muted-foreground uppercase first:mt-0">
+                    {group.label}
+                  </p>
+                  {group.players.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => selectPlayer(pickerSlot, p.id)}
+                      className="flex items-center justify-between rounded-md px-3 py-2 text-left text-sm hover:bg-muted"
+                    >
+                      <span className="flex items-center gap-2">
+                        {p.name}
+                        {p.shirtNumber != null && (
+                          <span className="text-xs text-muted-foreground">#{p.shirtNumber}</span>
+                        )}
+                      </span>
+                      <span className="text-xs text-muted-foreground">{p.position}</span>
+                    </button>
+                  ))}
+                </div>
               ))}
-            {pickerSlot !== null && availablePlayersFor(pickerSlot).length === 0 && (
+            {pickerSlot !== null && groupedPlayersFor(pickerSlot).length === 0 && (
               <p className="p-3 text-sm text-muted-foreground">
                 No eligible players left — free up a slot first.
               </p>

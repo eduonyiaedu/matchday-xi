@@ -15,7 +15,7 @@ export default async function TeamLeaderboardPage({
     where: { favoriteTeamId: teamId },
     orderBy: [{ totalPoints: "desc" }, { perfectXiCount: "desc" }, { createdAt: "asc" }],
     take: 100,
-    select: { id: true, displayName: true, totalPoints: true, perfectXiCount: true },
+    select: { id: true, displayName: true, username: true, totalPoints: true, perfectXiCount: true },
   });
 
   return (
@@ -26,6 +26,7 @@ export default async function TeamLeaderboardPage({
           rank: i + 1,
           userId: u.id,
           displayName: u.displayName,
+          username: u.username,
           totalPoints: u.totalPoints,
           perfectXiCount: u.perfectXiCount,
         }))}

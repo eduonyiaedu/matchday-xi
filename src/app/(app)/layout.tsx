@@ -15,6 +15,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <div className="flex min-h-svh flex-col">
       <AppNav
         displayName={user.displayName}
+        username={user.username}
         currentStreak={user.currentStreak}
         totalPoints={user.totalPoints}
         role={user.role}

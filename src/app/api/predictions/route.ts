@@ -3,6 +3,7 @@ import { getOrCreateCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { submitPredictionSchema } from "@/lib/validation";
 import { scopeKeyFor } from "@/lib/prediction-scope";
+import { getNextEligibleFixture, isPredictionWindowOpen } from "@/lib/next-fixture";
 
 export const runtime = "nodejs";
 
@@ -36,7 +37,7 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid input", issues: parsed.error.issues }, { status: 400 });
   }
-  const { fixtureId, teamId, slots } = parsed.data;
+  const { fixtureId, teamId, formation, slots } = parsed.data;
   const privateLeagueId = parsed.data.privateLeagueId ?? null;
 
   // Every player must be used exactly once, and slot indices must exactly cover 0-10.
@@ -57,6 +58,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "That team isn't playing in this fixture" }, { status: 400 });
   }
 
+  // Authoritative "next match only, opens 24h before kickoff" gate — applies everywhere
+  // (global and private-league predictions alike), scoped to the team being predicted for.
+  const nextFixture = await getNextEligibleFixture(teamId);
+  if (!nextFixture || nextFixture.id !== fixture.id) {
+    return NextResponse.json(
+      { error: "You can only predict for this team's next upcoming fixture." },
+      { status: 403 },
+    );
+  }
+  if (!isPredictionWindowOpen(fixture)) {
+    return NextResponse.json({ error: "Predictions open 24 hours before kickoff." }, { status: 403 });
+  }
+
   const team = await prisma.team.findUnique({ where: { id: teamId } });
   if (!team?.isPremierLeagueClub) {
     return NextResponse.json({ error: "Predictions can only be made for a Premier League club" }, { status: 400 });
@@ -71,6 +85,9 @@ export async function POST(request: NextRequest) {
     });
     if (membership?.status !== "APPROVED") {
       return NextResponse.json({ error: "You're not an approved member of this league" }, { status: 403 });
+    }
+    if (membership.teamId !== teamId) {
+      return NextResponse.json({ error: "This league requires your assigned team" }, { status: 400 });
     }
     if (fixture.kickoffAt < league.startDate || fixture.kickoffAt >= league.endDate) {
       return NextResponse.json({ error: "This fixture is outside the league's active window" }, { status: 400 });
@@ -129,10 +146,10 @@ export async function POST(request: NextRequest) {
     const upserted = existing
       ? await tx.prediction.update({
           where: { id: existing.id },
-          data: { teamId, updatedAt: new Date() },
+          data: { teamId, formation, updatedAt: new Date() },
         })
       : await tx.prediction.create({
-          data: { userId: user.id, fixtureId, teamId, privateLeagueId, scopeKey },
+          data: { userId: user.id, fixtureId, teamId, formation, privateLeagueId, scopeKey },
         });
 
     await tx.predictionSlot.deleteMany({ where: { predictionId: upserted.id } });

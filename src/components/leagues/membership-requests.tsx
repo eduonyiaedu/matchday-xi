@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 export function MembershipRequests({
   pending,
 }: {
-  pending: { id: string; displayName: string }[];
+  pending: { id: string; displayName: string; username: string; teamName: string | null }[];
 }) {
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -34,7 +34,10 @@ export function MembershipRequests({
       <CardContent className="flex flex-col gap-2">
         {pending.map((m) => (
           <div key={m.id} className="flex items-center justify-between">
-            <span className="text-sm">{m.displayName}</span>
+            <span className="text-sm">
+              {m.displayName} <span className="text-muted-foreground">@{m.username}</span>
+              {m.teamName && <span className="text-muted-foreground"> · {m.teamName}</span>}
+            </span>
             <div className="flex gap-2">
               <Button size="sm" disabled={busyId === m.id} onClick={() => respond(m.id, true)}>
                 Approve

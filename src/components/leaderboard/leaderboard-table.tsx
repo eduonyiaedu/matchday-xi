@@ -11,6 +11,7 @@ export interface LeaderboardRow {
   rank: number;
   userId: string;
   displayName: string;
+  username: string;
   teamName?: string;
   totalPoints: number;
   perfectXiCount: number;
@@ -32,7 +33,9 @@ export function LeaderboardTable({ rows }: { rows: LeaderboardRow[] }) {
         {rows.map((row) => (
           <TableRow key={row.userId}>
             <TableCell className="font-medium">{row.rank}</TableCell>
-            <TableCell>{row.displayName}</TableCell>
+            <TableCell>
+              {row.displayName} <span className="text-muted-foreground">@{row.username}</span>
+            </TableCell>
             {row.teamName !== undefined && <TableCell>{row.teamName}</TableCell>}
             <TableCell className="text-right">{row.perfectXiCount}</TableCell>
             <TableCell className="text-right font-semibold">{row.totalPoints}</TableCell>

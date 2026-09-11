@@ -2,6 +2,7 @@ import { getOrCreateCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { LocalTime } from "@/components/ui/local-time";
 
 export default async function HistoryPage() {
   const user = await getOrCreateCurrentUser();
@@ -30,7 +31,7 @@ export default async function HistoryPage() {
                 {p.fixture.homeTeam.name} vs {p.fixture.awayTeam.name}
               </CardTitle>
               <p className="text-sm text-muted-foreground">
-                {p.fixture.competition.name} · {p.fixture.kickoffAt.toLocaleDateString()}
+                {p.fixture.competition.name} · <LocalTime iso={p.fixture.kickoffAt.toISOString()} dateOnly />
               </p>
             </div>
             <div className="flex items-center gap-2">

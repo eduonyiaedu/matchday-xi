@@ -14,7 +14,7 @@ export default async function PublicLayout({ children }: { children: React.React
             Matchday XI
           </Link>
           <Button variant="outline" size="sm" asChild>
-            <Link href={user ? "/fixtures" : "/login"}>{user ? "Open app" : "Log in"}</Link>
+            <Link href={user ? "/home" : "/login"}>{user ? "Open app" : "Log in"}</Link>
           </Button>
         </div>
       </header>

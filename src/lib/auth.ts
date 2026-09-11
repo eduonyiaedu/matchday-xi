@@ -14,6 +14,15 @@ export async function getCurrentUser() {
   return prisma.user.findUnique({ where: { id: authUser.id } });
 }
 
+function sanitizeUsernameBase(raw: string): string {
+  const cleaned = raw.toLowerCase().replace(/[^a-z0-9_]/g, "");
+  return cleaned.slice(0, 14) || "player";
+}
+
+function randomSuffix(): string {
+  return Math.random().toString(36).slice(2, 6);
+}
+
 /**
  * Same as getCurrentUser, but also ensures a User profile row exists (first sign-in).
  *
@@ -31,11 +40,17 @@ export const getOrCreateCurrentUser = cache(async () => {
   } = await supabase.auth.getUser();
   if (!authUser) return null;
 
-  // Signup consent timestamps (see AuthForm) ride along as Supabase user_metadata — set directly
-  // in options.data for password/magic-link signup, or via updateUser() in the OAuth callback
-  // route for Google signup — and land here only once, at profile-row creation.
+  // Signup consent timestamps + username (see AuthForm) ride along as Supabase user_metadata —
+  // set directly in options.data for password/magic-link signup, or via updateUser() in the
+  // OAuth callback route for Google signup — and land here only once, at profile-row creation.
   const ageConfirmedAt = authUser.user_metadata?.ageConfirmedAt as string | undefined;
   const tosConsentedAt = authUser.user_metadata?.tosConsentedAt as string | undefined;
+  const requestedUsername = authUser.user_metadata?.username as string | undefined;
+  const fallbackBase = sanitizeUsernameBase(authUser.email?.split("@")[0] ?? "player");
+  const displayName =
+    (authUser.user_metadata?.full_name as string | undefined) ??
+    authUser.email?.split("@")[0] ??
+    "Player";
 
   try {
     return await prisma.user.upsert({
@@ -44,17 +59,37 @@ export const getOrCreateCurrentUser = cache(async () => {
       create: {
         id: authUser.id,
         email: authUser.email ?? "",
-        displayName:
-          (authUser.user_metadata?.full_name as string | undefined) ??
-          authUser.email?.split("@")[0] ??
-          "Player",
+        // Falls back to a derived username (never blocks account creation) for edge cases the
+        // checkbox/username flow doesn't cover — e.g. a brand-new account created by clicking
+        // "Continue with Google" from the login page rather than signup.
+        username: requestedUsername ?? `${fallbackBase}${randomSuffix()}`,
+        displayName,
         ageConfirmedAt: ageConfirmedAt ? new Date(ageConfirmedAt) : null,
         tosConsentedAt: tosConsentedAt ? new Date(tosConsentedAt) : null,
       },
     });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      return prisma.user.findUniqueOrThrow({ where: { id: authUser.id } });
+      // Prisma's error.meta.target isn't a reliable string[] to pattern-match on — for a named
+      // constraint (e.g. the primary key "User_pkey") it can come back as a bare constraint-name
+      // string instead of a column-name array, so check for the actual cause directly: does a
+      // row with this id already exist (the cross-request race this whole try/catch exists for)?
+      const byId = await prisma.user.findUnique({ where: { id: authUser.id } });
+      if (byId) return byId;
+
+      // Not an id collision — a genuine username collision (the pre-check missed a race, or an
+      // unlucky fallback suffix). Retry once with a fresh suffix rather than failing the whole
+      // sign-in, since the Supabase auth user already exists by this point.
+      return prisma.user.create({
+        data: {
+          id: authUser.id,
+          email: authUser.email ?? "",
+          username: `${fallbackBase}${randomSuffix()}`,
+          displayName,
+          ageConfirmedAt: ageConfirmedAt ? new Date(ageConfirmedAt) : null,
+          tosConsentedAt: tosConsentedAt ? new Date(tosConsentedAt) : null,
+        },
+      });
     }
     throw error;
   }

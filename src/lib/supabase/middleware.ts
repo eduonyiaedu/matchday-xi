@@ -32,6 +32,7 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const protectedPrefixes = [
+    "/home",
     "/predict",
     "/fixtures",
     "/history",

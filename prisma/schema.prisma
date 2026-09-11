@@ -24,6 +24,11 @@ enum PlayerPosition {
   FORWARD
 }
 
+enum SquadTier {
+  SENIOR
+  U21
+}
+
 enum FixtureStatus {
   SCHEDULED
   LOCKED
@@ -53,6 +58,7 @@ enum JobName {
   CHECK_LINEUPS
   LOCK_SWEEP
   DAILY_ROLLUP
+  SYNC_SHIRT_NUMBERS
 }
 
 enum JobStatus {
@@ -67,6 +73,8 @@ enum JobStatus {
 model User {
   id                   String    @id
   email                String    @unique
+  /// Separate from displayName — chosen at signup, shown alongside the real name throughout the app.
+  username             String    @unique
   displayName          String
   favoriteTeamId       String?
   favoriteTeam         Team?     @relation(fields: [favoriteTeamId], references: [id])
@@ -115,6 +123,9 @@ model Team {
   /// (oldest-synced-first, a few teams per run) so a single sync job never bursts past
   /// football-data.org's free-tier 10-requests/minute cap — see lib/services/fixture-sync.ts.
   squadLastSyncedAt   DateTime?
+  /// Last time this team's shirt numbers + U21 roster were pulled from API-Football (separate
+  /// cadence/cursor from squadLastSyncedAt — see lib/services/squad-enrichment-sync.ts).
+  apiFootballSquadSyncedAt DateTime?
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
@@ -125,6 +136,7 @@ model Team {
   predictions       Prediction[]
   officialLineups   OfficialLineup[]
   restrictedLeagues PrivateLeague[]   @relation("SingleTeamRestriction")
+  leagueMemberships PrivateLeagueMembership[]
 
   @@index([isPremierLeagueClub])
 }
@@ -134,13 +146,21 @@ model SquadPlayer {
   id             String         @id @default(uuid())
   teamId         String
   team           Team           @relation(fields: [teamId], references: [id])
-  /// football-data.org person id
-  footballDataId Int            @unique
+  /// football-data.org person id — null for API-Football-only players (U21 squads aren't
+  /// tracked by football-data.org at all, see lib/services/squad-enrichment-sync.ts).
+  footballDataId Int?           @unique
   /// API-Football player id, resolved lazily via name+team match (see lib/player-matching.ts)
   apiFootballId  Int?           @unique
   name           String
   /// Tagged position — only used to gate the GK slot (rulebook §4); outfield slots are free-form.
   position       PlayerPosition
+  /// Sourced from API-Football, never reconciled across tiers — a U21 player always shows the
+  /// number they carry in the U21 squad listing, independent of anything else.
+  shirtNumber    Int?
+  /// SENIOR = the official football-data.org 25-man squad. U21 = academy players eligible
+  /// under PL rules to play for the first team without being in that 25-man squad, sourced
+  /// separately from API-Football's U21 squad listing (roster only — never fixtures/results).
+  squadTier      SquadTier      @default(SENIOR)
   photoUrl       String?
   /// Deactivated (not deleted) across transfer windows to preserve prediction history.
   isActive       Boolean        @default(true)
@@ -216,6 +236,9 @@ model Prediction {
   /// for null so the unique constraint below actually enforces one prediction per scope.
   /// Always set to `privateLeagueId ?? "GLOBAL"` — see lib/prediction-scope.ts.
   scopeKey        String
+  /// Purely visual — one of the FORMATIONS in lib/validation.ts. Scoring only ever compares
+  /// predicted vs. official player-id sets, never slot position, so this never affects points.
+  formation       String         @default("4-4-2")
   submittedAt     DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
   pointsAwarded   Int?
@@ -343,6 +366,11 @@ model PrivateLeagueMembership {
   league      PrivateLeague    @relation(fields: [leagueId], references: [id], onDelete: Cascade)
   userId      String
   user        User             @relation(fields: [userId], references: [id])
+  /// The member's permanent team choice for this league (set at join, or at creation for the
+  /// creator's own row) — null only while a request is PENDING under a rule that requires a
+  /// choice. Never changed once the membership is APPROVED (rulebook §12b).
+  teamId      String?
+  team        Team?            @relation(fields: [teamId], references: [id])
   status      MembershipStatus @default(PENDING)
   requestedAt DateTime         @default(now())
   respondedAt DateTime?

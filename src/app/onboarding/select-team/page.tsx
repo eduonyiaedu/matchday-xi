@@ -7,7 +7,7 @@ import { Footer } from "@/components/layout/footer";
 export default async function SelectTeamPage() {
   const user = await getOrCreateCurrentUser();
   if (!user) redirect("/login?next=/onboarding/select-team");
-  if (user.favoriteTeamId) redirect("/fixtures");
+  if (user.favoriteTeamId) redirect("/home");
 
   const teams = await prisma.team.findMany({
     where: { isPremierLeagueClub: true, isActive: true },

@@ -10,13 +10,16 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 
+const USERNAME_PATTERN = /^[a-z0-9_]{3,20}$/;
+
 export function AuthForm({ mode }: { mode: "login" | "signup" }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const next = searchParams.get("next") ?? "/fixtures";
+  const next = searchParams.get("next") ?? "/home";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [username, setUsername] = useState("");
   const [ageConfirmed, setAgeConfirmed] = useState(false);
   const [tosAgreed, setTosAgreed] = useState(false);
   const [loading, setLoading] = useState<"password" | "magic" | "google" | null>(null);
@@ -24,12 +27,32 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
   const [error, setError] = useState<string | null>(null);
 
   const consentRequired = mode === "signup";
-  const consentGiven = !consentRequired || (ageConfirmed && tosAgreed);
+  const usernameFormatValid = !consentRequired || USERNAME_PATTERN.test(username);
+  const consentGiven = !consentRequired || (ageConfirmed && tosAgreed && usernameFormatValid);
 
   // Stamped once, at the moment of submission, so both fields share the exact same timestamp.
-  function consentMetadata() {
+  function signupMetadata() {
     const now = new Date().toISOString();
-    return { ageConfirmedAt: now, tosConsentedAt: now };
+    return { ageConfirmedAt: now, tosConsentedAt: now, username };
+  }
+
+  /** Checked right before every signup path fires — the format check above is just UX polish. */
+  async function ensureUsernameAvailable(): Promise<boolean> {
+    if (!USERNAME_PATTERN.test(username)) {
+      setError("Username must be 3-20 characters: lowercase letters, numbers, underscore only.");
+      return false;
+    }
+    const res = await fetch("/api/auth/check-username", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || !body.available) {
+      setError("That username is already taken.");
+      return false;
+    }
+    return true;
   }
 
   async function handlePasswordSubmit(e: React.FormEvent) {
@@ -37,6 +60,7 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
     if (!consentGiven) return;
     setError(null);
     setMessage(null);
+    if (consentRequired && !(await ensureUsernameAvailable())) return;
     setLoading("password");
     const supabase = createClient();
 
@@ -48,7 +72,7 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
             password,
             options: {
               emailRedirectTo: `${window.location.origin}/auth/callback?next=${next}`,
-              data: consentMetadata(),
+              data: signupMetadata(),
             },
           });
 
@@ -73,13 +97,14 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
     }
     setError(null);
     setMessage(null);
+    if (consentRequired && !(await ensureUsernameAvailable())) return;
     setLoading("magic");
     const supabase = createClient();
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
         emailRedirectTo: `${window.location.origin}/auth/callback?next=${next}`,
-        ...(consentRequired ? { data: consentMetadata() } : {}),
+        ...(consentRequired ? { data: signupMetadata() } : {}),
       },
     });
     setLoading(null);
@@ -93,18 +118,20 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
   async function handleGoogle() {
     if (!consentGiven) return;
     setError(null);
+    if (consentRequired && !(await ensureUsernameAvailable())) return;
     setLoading("google");
     const supabase = createClient();
 
     // signInWithOAuth can't attach custom user_metadata directly (Google, not us, controls that
-    // leg of the redirect), so the consent timestamps ride along as callback query params instead
-    // — the callback route applies them via updateUser() once the session exists.
+    // leg of the redirect), so consent timestamps + username ride along as callback query params
+    // instead — the callback route applies them via updateUser() once the session exists.
     const callbackUrl = new URL("/auth/callback", window.location.origin);
     callbackUrl.searchParams.set("next", next);
     if (consentRequired) {
-      const { ageConfirmedAt, tosConsentedAt } = consentMetadata();
+      const { ageConfirmedAt, tosConsentedAt } = signupMetadata();
       callbackUrl.searchParams.set("ageConsent", ageConfirmedAt);
       callbackUrl.searchParams.set("tosConsent", tosConsentedAt);
+      callbackUrl.searchParams.set("username", username);
     }
 
     const { error } = await supabase.auth.signInWithOAuth({
@@ -144,6 +171,24 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
             placeholder="••••••••"
           />
         </div>
+
+        {consentRequired && (
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="username">Username</Label>
+            <Input
+              id="username"
+              required
+              minLength={3}
+              maxLength={20}
+              value={username}
+              onChange={(e) => setUsername(e.target.value.toLowerCase())}
+              placeholder="e.g. redsfan92"
+            />
+            <p className="text-xs text-muted-foreground">
+              3-20 characters: lowercase letters, numbers, underscore. Shown alongside your name.
+            </p>
+          </div>
+        )}
 
         {consentRequired && (
           <div className="flex flex-col gap-2 pt-1">

@@ -17,6 +17,7 @@ export default async function GlobalLeaderboardPage() {
     select: {
       id: true,
       displayName: true,
+      username: true,
       totalPoints: true,
       perfectXiCount: true,
       favoriteTeam: { select: { name: true } },
@@ -31,6 +32,7 @@ export default async function GlobalLeaderboardPage() {
           rank: i + 1,
           userId: u.id,
           displayName: u.displayName,
+          username: u.username,
           teamName: u.favoriteTeam?.name ?? "",
           totalPoints: u.totalPoints,
           perfectXiCount: u.perfectXiCount,

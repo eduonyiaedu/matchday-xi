@@ -23,6 +23,11 @@ export function CreateLeagueForm({ teams }: { teams: { id: string; name: string 
   const [name, setName] = useState("");
   const [teamRule, setTeamRule] = useState<TeamRule>("ANY_TEAM");
   const [restrictedTeamId, setRestrictedTeamId] = useState<string>("");
+  // Your own permanent team choice for this league — always required.
+  const [teamId, setTeamId] = useState<string>("");
+  // For SINGLE_TEAM, the team choice is implied by restrictedTeamId — derived at render time
+  // rather than synced into state via an effect.
+  const effectiveTeamId = teamRule === "SINGLE_TEAM" ? restrictedTeamId : teamId;
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +44,7 @@ export function CreateLeagueForm({ teams }: { teams: { id: string; name: string 
       body: JSON.stringify({
         name,
         teamRule,
+        teamId: effectiveTeamId,
         restrictedTeamId: teamRule === "SINGLE_TEAM" ? restrictedTeamId : undefined,
         startDate,
         endDate,
@@ -93,6 +99,25 @@ export function CreateLeagueForm({ teams }: { teams: { id: string; name: string 
         </div>
       )}
 
+      <div className="flex flex-col gap-1.5">
+        <Label>Your team</Label>
+        <Select value={effectiveTeamId} onValueChange={setTeamId} disabled={teamRule === "SINGLE_TEAM"}>
+          <SelectTrigger>
+            <SelectValue placeholder="Select your team" />
+          </SelectTrigger>
+          <SelectContent>
+            {teams.map((t) => (
+              <SelectItem key={t.id} value={t.id}>
+                {t.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          Permanent once set — you&apos;ll predict this league&apos;s fixtures for this team only.
+        </p>
+      </div>
+
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="startDate">Starts</Label>
@@ -124,7 +149,7 @@ export function CreateLeagueForm({ teams }: { teams: { id: string; name: string 
       </Card>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
-      <Button type="submit" size="lg" disabled={submitting}>
+      <Button type="submit" size="lg" disabled={submitting || !effectiveTeamId}>
         {submitting ? "Creating..." : "Create league"}
       </Button>
     </form>

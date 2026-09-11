@@ -5,8 +5,11 @@ import { prisma } from "@/lib/prisma";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { LocalTime } from "@/components/ui/local-time";
 import { JoinLeagueButton } from "@/components/leagues/join-league-button";
 import { MembershipRequests } from "@/components/leagues/membership-requests";
+import { FixtureEligibilityBadge } from "@/components/predict/fixture-eligibility-badge";
+import { getNextEligibleFixture, isPredictionWindowOpen, predictionOpensAt } from "@/lib/next-fixture";
 
 export default async function LeagueDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -16,27 +19,40 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
   const league = await prisma.privateLeague.findUnique({
     where: { id },
     include: {
-      creator: { select: { displayName: true } },
+      creator: { select: { displayName: true, username: true } },
       restrictedTeam: { select: { name: true } },
-      memberships: { include: { user: { select: { displayName: true } } } },
+      memberships: { include: { user: { select: { displayName: true, username: true } }, team: { select: { name: true } } } },
     },
   });
   if (!league) notFound();
 
   const myMembership = league.memberships.find((m) => m.userId === user.id);
-  const isCreator = league.creatorId === user.id;
-  const isApproved = isCreator || myMembership?.status === "APPROVED";
+  const isApproved = myMembership?.status === "APPROVED" && myMembership.teamId;
+
+  const teams =
+    league.teamRule === "SINGLE_TEAM"
+      ? []
+      : await prisma.team.findMany({
+          where: { isPremierLeagueClub: true, isActive: true },
+          orderBy: { name: "asc" },
+          select: { id: true, name: true },
+        });
 
   let fixtures: Awaited<ReturnType<typeof getEligibleFixtures>> = [];
-  if (isApproved) {
-    fixtures = await getEligibleFixtures(league);
+  let nextFixtureId: string | null = null;
+  if (isApproved && myMembership?.teamId) {
+    fixtures = await getEligibleFixtures(myMembership.teamId, league);
+    const next = await getNextEligibleFixture(myMembership.teamId);
+    nextFixtureId = next?.id ?? null;
   }
 
   return (
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-bold">{league.name}</h1>
-        <p className="text-sm text-muted-foreground">Created by {league.creator.displayName}</p>
+        <p className="text-sm text-muted-foreground">
+          Created by {league.creator.displayName} <span>@{league.creator.username}</span>
+        </p>
       </div>
 
       <Card>
@@ -49,26 +65,36 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
             {league.teamRule === "SINGLE_TEAM"
               ? `everyone predicts for ${league.restrictedTeam?.name}`
               : league.teamRule === "SINGLE_LEAGUE"
-                ? "any club from the specified competition"
-                : "any Premier League club"}
+                ? "any club from the specified competition (each member picks their own at join time)"
+                : "any Premier League club (each member picks their own at join time)"}
           </p>
           <p>
-            Active window: {league.startDate.toLocaleDateString()} –{" "}
-            {league.endDate.toLocaleDateString()}
+            Active window: <LocalTime iso={league.startDate.toISOString()} dateOnly /> –{" "}
+            <LocalTime iso={league.endDate.toISOString()} dateOnly />
           </p>
           <p className="text-muted-foreground">Free to join — paid entry isn&apos;t live yet.</p>
         </CardContent>
       </Card>
 
-      {!isCreator && (
-        <JoinLeagueButton leagueId={league.id} status={myMembership?.status ?? null} />
+      {league.creatorId !== user.id && (
+        <JoinLeagueButton
+          leagueId={league.id}
+          status={myMembership?.status ?? null}
+          teamRule={league.teamRule}
+          teams={teams}
+        />
       )}
 
-      {isCreator && (
+      {league.creatorId === user.id && (
         <MembershipRequests
           pending={league.memberships
             .filter((m) => m.status === "PENDING")
-            .map((m) => ({ id: m.id, displayName: m.user.displayName }))}
+            .map((m) => ({
+              id: m.id,
+              displayName: m.user.displayName,
+              username: m.user.username,
+              teamName: m.team?.name ?? null,
+            }))}
         />
       )}
 
@@ -79,26 +105,46 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
             <p className="text-sm text-muted-foreground">No eligible fixtures right now.</p>
           )}
           <div className="flex flex-col gap-2">
-            {fixtures.map((f) => (
-              <Card key={`${f.fixtureId}-${f.teamId}`}>
-                <CardHeader className="flex flex-row items-center justify-between">
-                  <div>
-                    <CardTitle className="text-base">
-                      {f.homeTeamName} vs {f.awayTeamName}
-                    </CardTitle>
-                    <CardDescription>{f.kickoffAt.toLocaleString()}</CardDescription>
-                  </div>
-                  <Badge variant="secondary">Predicting for {f.teamName}</Badge>
-                </CardHeader>
-                <CardContent>
-                  <Button asChild size="sm">
-                    <Link href={`/leagues/${league.id}/predict/${f.fixtureId}?teamId=${f.teamId}`}>
-                      Build lineup
-                    </Link>
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
+            {fixtures.map((f) => {
+              const locked = f.status !== "SCHEDULED" || new Date() >= f.lockAt;
+              const isNext = f.id === nextFixtureId;
+              const windowOpen = isPredictionWindowOpen(f);
+              const actionable = !locked && isNext && windowOpen;
+              return (
+                <Card key={f.id}>
+                  <CardHeader className="flex flex-row items-center justify-between">
+                    <div>
+                      <CardTitle className="text-base">
+                        {f.homeTeam.name} vs {f.awayTeam.name}
+                      </CardTitle>
+                      <CardDescription>
+                        <LocalTime iso={f.kickoffAt.toISOString()} />
+                      </CardDescription>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary">Predicting for {myMembership!.team?.name}</Badge>
+                      {locked && <Badge variant="outline">Locked</Badge>}
+                      {!locked && (
+                        <FixtureEligibilityBadge isNext={isNext} windowOpen={windowOpen} opensAt={predictionOpensAt(f)} />
+                      )}
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {locked || actionable ? (
+                      <Button asChild size="sm">
+                        <Link href={`/leagues/${league.id}/predict/${f.id}`}>
+                          {locked ? "View" : "Build lineup"}
+                        </Link>
+                      </Button>
+                    ) : (
+                      <Button disabled size="sm" variant="outline">
+                        {isNext ? "Opens soon" : "Not yet your next match"}
+                      </Button>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         </div>
       )}
@@ -106,44 +152,17 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
   );
 }
 
-async function getEligibleFixtures(league: {
-  id: string;
-  teamRule: string;
-  restrictedTeamId: string | null;
-  startDate: Date;
-  endDate: Date;
-}) {
-  const fixtures = await prisma.fixture.findMany({
+async function getEligibleFixtures(
+  memberTeamId: string,
+  league: { startDate: Date; endDate: Date },
+) {
+  return prisma.fixture.findMany({
     where: {
-      status: { in: ["SCHEDULED", "LOCKED"] },
+      status: { in: ["SCHEDULED", "LOCKED", "LINEUPS_FETCHED", "NEEDS_MANUAL_REVIEW"] },
+      OR: [{ homeTeamId: memberTeamId }, { awayTeamId: memberTeamId }],
       kickoffAt: { gte: league.startDate, lt: league.endDate },
     },
     include: { homeTeam: true, awayTeam: true },
     orderBy: { kickoffAt: "asc" },
   });
-
-  const rows: Array<{
-    fixtureId: string;
-    teamId: string;
-    teamName: string;
-    homeTeamName: string;
-    awayTeamName: string;
-    kickoffAt: Date;
-  }> = [];
-
-  for (const fixture of fixtures) {
-    const sides = [fixture.homeTeam, fixture.awayTeam].filter((t) => t.isPremierLeagueClub);
-    for (const side of sides) {
-      if (league.teamRule === "SINGLE_TEAM" && side.id !== league.restrictedTeamId) continue;
-      rows.push({
-        fixtureId: fixture.id,
-        teamId: side.id,
-        teamName: side.name,
-        homeTeamName: fixture.homeTeam.name,
-        awayTeamName: fixture.awayTeam.name,
-        kickoffAt: fixture.kickoffAt,
-      });
-    }
-  }
-  return rows;
 }

@@ -53,18 +53,41 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "endDate must be after startDate" }, { status: 400 });
   }
 
-  const league = await prisma.privateLeague.create({
-    data: {
-      creatorId: user.id,
-      name: data.name,
-      slug: slugify(data.name),
-      teamRule: data.teamRule,
-      restrictedTeamId: data.teamRule === "SINGLE_TEAM" ? data.restrictedTeamId : undefined,
-      restrictedCompetitionId: data.teamRule === "SINGLE_LEAGUE" ? data.restrictedCompetitionId : undefined,
-      startDate: data.startDate,
-      endDate: data.endDate,
-      // isPaid/entryFee intentionally omitted — always default to free (false/null) in this build.
-    },
+  const team = await prisma.team.findUnique({ where: { id: data.teamId } });
+  if (!team?.isPremierLeagueClub || !team.isActive) {
+    return NextResponse.json({ error: "teamId must be an active Premier League club" }, { status: 400 });
+  }
+  if (data.teamRule === "SINGLE_TEAM" && data.teamId !== data.restrictedTeamId) {
+    return NextResponse.json({ error: "Your own team must match the league's required team" }, { status: 400 });
+  }
+
+  // The creator's team choice becomes their own membership row, approved immediately — this is
+  // what makes the creator able to build a lineup right away, instead of relying on a page-level
+  // bypass with nothing backing it at the API layer (the exact bug this fixes).
+  const league = await prisma.$transaction(async (tx) => {
+    const created = await tx.privateLeague.create({
+      data: {
+        creatorId: user.id,
+        name: data.name,
+        slug: slugify(data.name),
+        teamRule: data.teamRule,
+        restrictedTeamId: data.teamRule === "SINGLE_TEAM" ? data.restrictedTeamId : undefined,
+        restrictedCompetitionId: data.teamRule === "SINGLE_LEAGUE" ? data.restrictedCompetitionId : undefined,
+        startDate: data.startDate,
+        endDate: data.endDate,
+        // isPaid/entryFee intentionally omitted — always default to free (false/null) in this build.
+      },
+    });
+    await tx.privateLeagueMembership.create({
+      data: {
+        leagueId: created.id,
+        userId: user.id,
+        teamId: data.teamId,
+        status: "APPROVED",
+        respondedAt: new Date(),
+      },
+    });
+    return created;
   });
 
   return NextResponse.json({ league }, { status: 201 });

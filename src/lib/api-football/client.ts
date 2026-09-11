@@ -21,6 +21,14 @@ export interface ApiFootballFixture {
   teams: { home: { id: number; name: string }; away: { id: number; name: string } };
 }
 
+export interface ApiFootballSquadPlayer {
+  id: number;
+  name: string;
+  number: number | null;
+  position: string | null;
+  photo: string | null;
+}
+
 class ApiFootballClient {
   private get apiKey(): string {
     const key = process.env.API_FOOTBALL_KEY;
@@ -64,6 +72,18 @@ class ApiFootballClient {
       `/fixtures/lineups?fixture=${apiFootballFixtureId}`,
     );
     return data.response;
+  }
+
+  /**
+   * Full squad roster (with shirt numbers + photos) for one API-Football team id — works for
+   * senior sides and U21 sides alike, confirmed on the free tier (see
+   * lib/services/squad-enrichment-sync.ts, the only caller of this method).
+   */
+  async getSquad(apiFootballTeamId: number): Promise<ApiFootballSquadPlayer[]> {
+    const data = await this.request<{ response: { players: ApiFootballSquadPlayer[] }[] }>(
+      `/players/squads?team=${apiFootballTeamId}`,
+    );
+    return data.response[0]?.players ?? [];
   }
 }
 
