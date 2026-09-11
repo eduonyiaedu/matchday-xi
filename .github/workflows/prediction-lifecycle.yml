@@ -1,11 +1,12 @@
 name: Prediction lifecycle (lock sweep + lineup check + daily rollup)
 
+# NOTE: no `schedule` trigger here on purpose. GitHub Actions' scheduler deprioritizes frequent
+# cron on free/public repos badly enough in practice (confirmed: a "*/5 * * * *" schedule fired
+# every 1-5 hours instead, unusable for a ~15-20 min lineup-check window) that the real 5-minute
+# schedule for these three jobs is owned by cron-job.org hitting the same /api/cron/* routes
+# directly — see the account at console.cron-job.org and its 3 jobs (lock-sweep, check-lineups,
+# daily-rollup). This workflow is kept for manual re-testing via workflow_dispatch only.
 on:
-  schedule:
-    # Every 5 minutes — GitHub Actions' minimum cron granularity. lock-sweep and check-lineups
-    # are cheap, time-gated queries; daily-rollup no-ops on every call except the 1st of the
-    # month (UTC), see lib/prizes.ts.
-    - cron: "*/5 * * * *"
   workflow_dispatch: {}
 
 jobs:
