@@ -82,6 +82,10 @@ model User {
   perfectXiCount       Int       @default(0)
   /// Manual admin flag; disqualifies from prize eligibility without zeroing accrued points (rulebook §10).
   isFlaggedDuplicate   Boolean   @default(false)
+  /// Timestamp the user checked "I confirm I am 18 years of age or older" at signup. Captured for compliance records.
+  ageConfirmedAt       DateTime?
+  /// Timestamp the user checked "I agree to the Terms of Service and Privacy Policy" at signup. Captured for compliance records.
+  tosConsentedAt       DateTime?
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 

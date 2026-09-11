@@ -11,6 +11,7 @@
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
+    "create-test-user": "tsx scripts/create-test-user.ts",
     "test": "vitest run"
   },
   "dependencies": {

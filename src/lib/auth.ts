@@ -31,6 +31,12 @@ export const getOrCreateCurrentUser = cache(async () => {
   } = await supabase.auth.getUser();
   if (!authUser) return null;
 
+  // Signup consent timestamps (see AuthForm) ride along as Supabase user_metadata — set directly
+  // in options.data for password/magic-link signup, or via updateUser() in the OAuth callback
+  // route for Google signup — and land here only once, at profile-row creation.
+  const ageConfirmedAt = authUser.user_metadata?.ageConfirmedAt as string | undefined;
+  const tosConsentedAt = authUser.user_metadata?.tosConsentedAt as string | undefined;
+
   try {
     return await prisma.user.upsert({
       where: { id: authUser.id },
@@ -42,6 +48,8 @@ export const getOrCreateCurrentUser = cache(async () => {
           (authUser.user_metadata?.full_name as string | undefined) ??
           authUser.email?.split("@")[0] ??
           "Player",
+        ageConfirmedAt: ageConfirmedAt ? new Date(ageConfirmedAt) : null,
+        tosConsentedAt: tosConsentedAt ? new Date(tosConsentedAt) : null,
       },
     });
   } catch (error) {

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
+import { Footer } from "@/components/layout/footer";
 
 export default async function PublicLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
@@ -18,6 +19,7 @@ export default async function PublicLayout({ children }: { children: React.React
         </div>
       </header>
       <main className="mx-auto w-full max-w-5xl flex-1 p-4">{children}</main>
+      <Footer />
     </div>
   );
 }

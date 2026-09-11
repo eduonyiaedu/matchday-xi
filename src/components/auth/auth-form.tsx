@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 
 export function AuthForm({ mode }: { mode: "login" | "signup" }) {
@@ -15,12 +17,24 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [ageConfirmed, setAgeConfirmed] = useState(false);
+  const [tosAgreed, setTosAgreed] = useState(false);
   const [loading, setLoading] = useState<"password" | "magic" | "google" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const consentRequired = mode === "signup";
+  const consentGiven = !consentRequired || (ageConfirmed && tosAgreed);
+
+  // Stamped once, at the moment of submission, so both fields share the exact same timestamp.
+  function consentMetadata() {
+    const now = new Date().toISOString();
+    return { ageConfirmedAt: now, tosConsentedAt: now };
+  }
+
   async function handlePasswordSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!consentGiven) return;
     setError(null);
     setMessage(null);
     setLoading("password");
@@ -32,7 +46,10 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
         : await supabase.auth.signUp({
             email,
             password,
-            options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=${next}` },
+            options: {
+              emailRedirectTo: `${window.location.origin}/auth/callback?next=${next}`,
+              data: consentMetadata(),
+            },
           });
 
     setLoading(null);
@@ -49,6 +66,7 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
   }
 
   async function handleMagicLink() {
+    if (!consentGiven) return;
     if (!email) {
       setError("Enter your email first.");
       return;
@@ -59,7 +77,10 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
     const supabase = createClient();
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=${next}` },
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback?next=${next}`,
+        ...(consentRequired ? { data: consentMetadata() } : {}),
+      },
     });
     setLoading(null);
     if (error) {
@@ -70,12 +91,25 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
   }
 
   async function handleGoogle() {
+    if (!consentGiven) return;
     setError(null);
     setLoading("google");
     const supabase = createClient();
+
+    // signInWithOAuth can't attach custom user_metadata directly (Google, not us, controls that
+    // leg of the redirect), so the consent timestamps ride along as callback query params instead
+    // — the callback route applies them via updateUser() once the session exists.
+    const callbackUrl = new URL("/auth/callback", window.location.origin);
+    callbackUrl.searchParams.set("next", next);
+    if (consentRequired) {
+      const { ageConfirmedAt, tosConsentedAt } = consentMetadata();
+      callbackUrl.searchParams.set("ageConsent", ageConfirmedAt);
+      callbackUrl.searchParams.set("tosConsent", tosConsentedAt);
+    }
+
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${window.location.origin}/auth/callback?next=${next}` },
+      options: { redirectTo: callbackUrl.toString() },
     });
     if (error) {
       setLoading(null);
@@ -110,7 +144,43 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
             placeholder="••••••••"
           />
         </div>
-        <Button type="submit" disabled={loading !== null}>
+
+        {consentRequired && (
+          <div className="flex flex-col gap-2 pt-1">
+            <div className="flex items-start gap-2">
+              <Checkbox
+                id="age-consent"
+                checked={ageConfirmed}
+                onCheckedChange={(checked) => setAgeConfirmed(checked === true)}
+                className="mt-0.5"
+              />
+              <Label htmlFor="age-consent" className="text-sm leading-snug font-normal">
+                I confirm I am 18 years of age or older.
+              </Label>
+            </div>
+            <div className="flex items-start gap-2">
+              <Checkbox
+                id="tos-consent"
+                checked={tosAgreed}
+                onCheckedChange={(checked) => setTosAgreed(checked === true)}
+                className="mt-0.5"
+              />
+              <Label htmlFor="tos-consent" className="text-sm leading-snug font-normal">
+                I agree to the{" "}
+                <Link href="/terms" target="_blank" className="underline">
+                  Terms of Service
+                </Link>{" "}
+                and{" "}
+                <Link href="/privacy" target="_blank" className="underline">
+                  Privacy Policy
+                </Link>
+                .
+              </Label>
+            </div>
+          </div>
+        )}
+
+        <Button type="submit" disabled={loading !== null || !consentGiven}>
           {mode === "login" ? "Log in" : "Create account"}
         </Button>
       </form>
@@ -121,10 +191,10 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
         <Separator className="flex-1" />
       </div>
 
-      <Button variant="outline" onClick={handleMagicLink} disabled={loading !== null}>
+      <Button variant="outline" onClick={handleMagicLink} disabled={loading !== null || !consentGiven}>
         Send me a magic link
       </Button>
-      <Button variant="outline" onClick={handleGoogle} disabled={loading !== null}>
+      <Button variant="outline" onClick={handleGoogle} disabled={loading !== null || !consentGiven}>
         Continue with Google
       </Button>
 

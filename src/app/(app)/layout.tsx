@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getOrCreateCurrentUser } from "@/lib/auth";
 import { recordDailyLoginIfNeeded } from "@/lib/streaks";
 import { AppNav } from "@/components/layout/app-nav";
+import { Footer } from "@/components/layout/footer";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getOrCreateCurrentUser();
@@ -19,6 +20,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         role={user.role}
       />
       <main className="mx-auto w-full max-w-5xl flex-1 p-4">{children}</main>
+      <Footer />
     </div>
   );
 }
