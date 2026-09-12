@@ -1,6 +1,6 @@
 import { getOrCreateCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { LocalTime } from "@/components/ui/local-time";
 
@@ -19,9 +19,11 @@ export default async function HistoryPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-2xl font-bold">Your prediction history</h1>
+      <h1 className="font-heading text-2xl font-semibold uppercase">Your prediction history</h1>
       {predictions.length === 0 && (
-        <p className="text-sm text-muted-foreground">No scored predictions yet.</p>
+        <Card>
+          <CardContent className="py-7 text-center text-sm text-muted-foreground">No scored predictions yet.</CardContent>
+        </Card>
       )}
       {predictions.map((p) => (
         <Card key={p.id}>

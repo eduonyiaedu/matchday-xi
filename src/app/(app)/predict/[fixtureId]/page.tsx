@@ -1,10 +1,12 @@
 import { notFound } from "next/navigation";
 import { getOrCreateCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { PitchBuilder, type Formation } from "@/components/predict/pitch-builder";
+import { PitchBuilder } from "@/components/predict/pitch-builder";
+import type { Formation } from "@/lib/formations";
 import { GLOBAL_SCOPE } from "@/lib/prediction-scope";
 import { getNextEligibleFixture, isPredictionWindowOpen, predictionOpensAt } from "@/lib/next-fixture";
 import { getTeamColors } from "@/lib/team-colors";
+import { getRecentForm, formFor } from "@/lib/player-form";
 import { LocalTime } from "@/components/ui/local-time";
 
 export default async function PredictPage({
@@ -36,20 +38,41 @@ export default async function PredictPage({
     windowNotYetOpen = !isPredictionWindowOpen(fixture);
   }
 
-  const squad = await prisma.squadPlayer.findMany({
-    where: { teamId: user.favoriteTeamId, isActive: true },
-    orderBy: { name: "asc" },
-    select: { id: true, name: true, position: true, shirtNumber: true, squadTier: true, photoUrl: true },
-  });
+  const [squadRaw, formMap, existing] = await Promise.all([
+    prisma.squadPlayer.findMany({
+      where: { teamId: user.favoriteTeamId, isActive: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, position: true, shirtNumber: true, squadTier: true, photoUrl: true },
+    }),
+    getRecentForm(user.favoriteTeamId),
+    prisma.prediction.findUnique({
+      where: { userId_fixtureId_scopeKey: { userId: user.id, fixtureId, scopeKey: GLOBAL_SCOPE } },
+      include: { slots: true },
+    }),
+  ]);
+  const squad = squadRaw.map((p) => ({ ...p, form: formFor(formMap, p.id, 5) }));
 
-  const existing = await prisma.prediction.findUnique({
-    where: { userId_fixtureId_scopeKey: { userId: user.id, fixtureId, scopeKey: GLOBAL_SCOPE } },
-    include: { slots: true },
-  });
+  const scored = fixture.status === "SCORED";
+  const officialLineup = scored
+    ? (
+        await prisma.officialLineup.findUnique({
+          where: { fixtureId_teamId: { fixtureId, teamId: user.favoriteTeamId } },
+          include: { players: { include: { squadPlayer: { select: { name: true, shirtNumber: true } } } } },
+        })
+      )?.players.map((p) => ({
+        squadPlayerId: p.squadPlayerId,
+        name: p.squadPlayer?.name ?? p.rawName,
+        shirtNumber: p.squadPlayer?.shirtNumber ?? null,
+      })) ?? []
+    : undefined;
 
   const opponent = fixture.homeTeamId === user.favoriteTeamId ? fixture.awayTeam : fixture.homeTeam;
   const isHome = fixture.homeTeamId === user.favoriteTeamId;
   const myTeam = isHome ? fixture.homeTeam : fixture.awayTeam;
+  const matchLabel =
+    fixture.homeScore !== null && fixture.awayScore !== null
+      ? `${fixture.homeTeam.shortName ?? fixture.homeTeam.name} ${fixture.homeScore}–${fixture.awayScore} ${fixture.awayTeam.shortName ?? fixture.awayTeam.name}`
+      : undefined;
 
   return (
     <div className="flex flex-col gap-4">
@@ -82,7 +105,12 @@ export default async function PredictPage({
           teamColors={getTeamColors(myTeam.externalId)}
           pointsAwarded={existing?.pointsAwarded ?? null}
           isPerfectXi={existing?.isPerfectXi ?? null}
-          scored={fixture.status === "SCORED"}
+          scored={scored}
+          officialLineup={officialLineup}
+          matchLabel={matchLabel}
+          matchdayLabel={`${fixture.competition.name} · Final`}
+          perfectXiCount={user.perfectXiCount}
+          predictionId={existing?.id}
         />
       )}
     </div>

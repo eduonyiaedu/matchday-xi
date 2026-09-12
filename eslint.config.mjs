@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Claude Design handoff/reference material, not app source — support.js is a generated
+    // third-party runtime bundled with the design canvas files, not something we maintain.
+    "design/**",
   ]),
 ]);
 

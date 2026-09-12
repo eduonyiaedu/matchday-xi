@@ -31,11 +31,18 @@ export default async function FixturesPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-2xl font-bold">Upcoming fixtures</h1>
+      <h1 className="font-heading text-2xl font-semibold uppercase">Upcoming fixtures</h1>
       {fixtures.length === 0 && (
-        <p className="text-sm text-muted-foreground">
-          No upcoming fixtures synced yet — check back soon.
-        </p>
+        <Card>
+          <CardContent className="py-7 text-center">
+            <div className="mx-auto h-13.5 w-13.5 rounded-xl turf shadow-[inset_0_0_0_1.5px_rgba(245,243,236,0.16)]" />
+            <p className="mt-3.5 font-heading text-lg font-semibold uppercase">No fixtures yet</p>
+            <p className="mx-auto mt-1.5 max-w-xs text-[12.5px] text-muted-foreground">
+              The Premier League calendar syncs every morning. Your next match will appear here as soon as it&apos;s
+              published.
+            </p>
+          </CardContent>
+        </Card>
       )}
       {fixtures.map((fixture) => {
         const locked = fixture.status !== "SCHEDULED" || new Date() >= fixture.lockAt;

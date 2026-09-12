@@ -2,8 +2,13 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import { Button } from "@/components/ui/button";
+import {
+  BottomSheet,
+  BottomSheetContent,
+  BottomSheetTitle,
+} from "@/components/ui/bottom-sheet";
+import { getTeamColors } from "@/lib/team-colors";
 import { cn } from "@/lib/utils";
 
 interface TeamOption {
@@ -11,13 +16,21 @@ interface TeamOption {
   name: string;
   shortName: string | null;
   crestUrl: string | null;
+  externalId: number;
+}
+
+function initialsFor(team: TeamOption): string {
+  return (team.shortName ?? team.name).slice(0, 3).toUpperCase();
 }
 
 export function TeamPicker({ teams }: { teams: TeamOption[] }) {
   const router = useRouter();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const selected = teams.find((t) => t.id === selectedId) ?? null;
 
   async function confirm() {
     if (!selectedId) return;
@@ -39,31 +52,81 @@ export function TeamPicker({ teams }: { teams: TeamOption[] }) {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {teams.map((team) => (
-          <button
-            key={team.id}
-            type="button"
-            onClick={() => setSelectedId(team.id)}
-            className={cn(
-              "flex flex-col items-center gap-2 rounded-lg border p-4 text-sm font-medium transition-colors hover:border-primary",
-              selectedId === team.id ? "border-primary bg-primary/5" : "border-border",
-            )}
-          >
-            {team.crestUrl ? (
-              <Image src={team.crestUrl} alt="" width={40} height={40} className="h-10 w-10 object-contain" unoptimized />
-            ) : (
-              <div className="h-10 w-10 rounded-full bg-muted" />
-            )}
-            <span className="text-center">{team.shortName ?? team.name}</span>
-          </button>
-        ))}
+    <div className="flex flex-col gap-5">
+      <div className="grid grid-cols-3 gap-2.5">
+        {teams.map((team) => {
+          const colors = getTeamColors(team.externalId);
+          const sel = selectedId === team.id;
+          return (
+            <button
+              key={team.id}
+              type="button"
+              onClick={() => setSelectedId(team.id)}
+              className={cn(
+                "flex min-h-11 flex-col items-center gap-2 rounded-xl p-3 transition-shadow",
+                !sel && "bg-pitch-light shadow-[inset_0_0_0_1px_rgba(245,243,236,0.07)]",
+              )}
+              style={
+                sel
+                  ? { backgroundColor: `${colors.primary}24`, boxShadow: `inset 0 0 0 2px ${colors.primary}` }
+                  : undefined
+              }
+            >
+              <div
+                className="flex size-8.5 items-center justify-center rounded-full font-heading text-[11px] font-bold"
+                style={{ backgroundColor: colors.primary, color: colors.secondary }}
+              >
+                {initialsFor(team)}
+              </div>
+              <span className="text-center font-heading text-[11px] leading-tight font-medium tracking-[0.02em] uppercase">
+                {team.shortName ?? team.name}
+              </span>
+            </button>
+          );
+        })}
       </div>
       {error && <p className="text-sm text-destructive">{error}</p>}
-      <Button size="lg" disabled={!selectedId || submitting} onClick={confirm}>
-        {submitting ? "Saving..." : "Confirm my club"}
+      <Button size="lg" disabled={!selectedId} onClick={() => setConfirmOpen(true)}>
+        {selected ? `Confirm ${selected.name}` : "Pick a club"}
       </Button>
+
+      <BottomSheet open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <BottomSheetContent>
+          {selected && (
+            <div className="flex flex-col gap-4 px-5 pb-6">
+              <div className="flex items-center gap-3">
+                <div
+                  className="flex size-11 items-center justify-center rounded-full font-heading text-sm font-bold"
+                  style={{
+                    backgroundColor: getTeamColors(selected.externalId).primary,
+                    color: getTeamColors(selected.externalId).secondary,
+                  }}
+                >
+                  {initialsFor(selected)}
+                </div>
+                <div>
+                  <BottomSheetTitle>{selected.name}</BottomSheetTitle>
+                  <p className="mt-0.5 text-xs text-muted-foreground">Your club for the season</p>
+                </div>
+              </div>
+              <p className="text-sm text-chalk">
+                You can switch clubs freely until your first prediction locks. After that it&apos;s
+                permanent — points and Perfect XIs stay tied to this club.
+              </p>
+              <Button size="lg" disabled={submitting} onClick={confirm}>
+                {submitting ? "Saving..." : "Lock it in"}
+              </Button>
+              <button
+                type="button"
+                onClick={() => setConfirmOpen(false)}
+                className="py-2 text-center text-sm text-muted-foreground"
+              >
+                Not yet
+              </button>
+            </div>
+          )}
+        </BottomSheetContent>
+      </BottomSheet>
     </div>
   );
 }

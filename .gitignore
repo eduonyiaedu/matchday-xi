@@ -42,3 +42,6 @@ next-env.d.ts
 
 # prisma generated client (regenerated via `npx prisma generate`)
 /src/generated/
+
+# Claude Design source export (spec/mockup reference, not app source)
+/design/

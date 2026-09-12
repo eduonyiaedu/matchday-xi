@@ -26,7 +26,7 @@ export default async function PrizesPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold">Prizes</h1>
+        <h1 className="font-heading text-2xl font-semibold uppercase">Prizes</h1>
         <p className="text-sm text-muted-foreground">
           Free to enter — no purchase required for anything below.
         </p>

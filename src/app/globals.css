@@ -2,14 +2,17 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
-
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+  --font-heading: var(--font-heading);
+  --font-mono: var(--font-mono);
+  --color-pitch: var(--pitch);
+  --color-pitch-light: var(--pitch-light);
+  --color-chalk: var(--chalk);
+  --color-gold: var(--gold);
+  --color-club: var(--club);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -48,73 +51,73 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-:root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+/* turf texture utility — used by every pitch surface */
+@utility turf {
+  background-image: repeating-linear-gradient(
+    90deg, var(--turf-a) 0, var(--turf-a) 28px,
+    var(--turf-b) 28px, var(--turf-b) 56px
+  );
 }
 
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+/* floodlight bloom — landing hero, takeover, splash only */
+@utility floodlight {
+  background-image: radial-gradient(
+    ellipse at 50% 40%,
+    color-mix(in oklab, var(--gold) 20%, transparent) 0%,
+    transparent 70%
+  );
+}
+
+:root {
+  --pitch:            #0B1F17;   /* app background        */
+  --pitch-light:      #132A20;   /* cards, sheets, panels */
+  --turf-a:           #0E2A1F;   /* stripe A              */
+  --turf-b:           #103020;   /* stripe B              */
+  --chalk:            #F5F3EC;   /* primary text          */
+  --muted:            #8A9A90;   /* secondary text        */
+  --gold:             #F0B429;   /* CTA, points, streak   */
+  --gold-hi:          #FFE28F;   /* gradient top stop     */
+  --gold-mid:         #F7C63C;   /* gradient mid stop     */
+  --gold-lo:          #DE9C10;   /* gradient bottom stop  */
+  --club:             #6CABDD;   /* per-user, from DB — overridden inline in (app)/layout.tsx */
+  --club-wash:        color-mix(in oklab, var(--club) 14%, transparent);
+
+  /* --font-sans / --font-heading / --font-mono come from next/font's .variable classes on
+     <html> (src/app/layout.tsx) — not redefined here, so there's exactly one source of truth
+     instead of a cascade-order guessing game between this file and next/font's own stylesheet. */
+
+  /* shadcn bindings — same names, new values */
+  --background:       var(--pitch);
+  --foreground:       var(--chalk);
+  --card:             var(--pitch-light);
+  --card-foreground:  var(--chalk);
+  --popover:          var(--pitch-light);
+  --popover-foreground: var(--chalk);
+  --primary:          var(--gold);
+  --primary-foreground: var(--pitch);
+  --secondary:        rgba(245,243,236,0.07);
+  --secondary-foreground: var(--chalk);
+  --muted-foreground: var(--muted);
+  --accent:           var(--club-wash);
+  --accent-foreground: var(--club);
+  --destructive:      #C8102E;
+  --border:           rgba(245,243,236,0.10);
+  --input:            rgba(245,243,236,0.12);
+  --ring:             var(--club);
+  --radius:           0.75rem;
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --sidebar: var(--pitch-light);
+  --sidebar-foreground: var(--chalk);
+  --sidebar-primary: var(--gold);
+  --sidebar-primary-foreground: var(--pitch);
+  --sidebar-accent: var(--club-wash);
+  --sidebar-accent-foreground: var(--club);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--club);
 }
 
 @layer base {
@@ -127,4 +130,42 @@
   html {
     @apply font-sans;
   }
+}
+
+@keyframes mdxiPulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--pulse-color, var(--club)) 45%, transparent); }
+  70% { box-shadow: 0 0 0 12px color-mix(in oklab, var(--pulse-color, var(--club)) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--pulse-color, var(--club)) 0%, transparent); }
+}
+@keyframes mdxiPop {
+  0% { transform: scale(0.4); opacity: 0; }
+  60% { transform: scale(1.14); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes mdxiFall {
+  0% { opacity: 0; transform: translateY(-40px) rotate(0); }
+  10% { opacity: 1; }
+  72% { opacity: 1; transform: translateY(700px) rotate(420deg); }
+  100% { opacity: 0; transform: translateY(760px) rotate(500deg); }
+}
+@keyframes mdxiShock {
+  0% { opacity: 0; transform: scale(0.2); }
+  36% { opacity: 0.5; transform: scale(0.4); }
+  48% { opacity: 0; transform: scale(1.5); }
+  100% { opacity: 0; transform: scale(1.5); }
+}
+@keyframes mdxiStamp {
+  0% { opacity: 0; transform: rotate(-14deg) scale(2.6); }
+  30% { opacity: 0; transform: rotate(-14deg) scale(2.6); }
+  36% { opacity: 1; transform: rotate(-8deg) scale(0.94); }
+  40% { transform: rotate(-9deg) scale(1.04); }
+  44% { transform: rotate(-9deg) scale(1); }
+  92% { opacity: 1; transform: rotate(-9deg) scale(1); }
+  100% { opacity: 0; transform: rotate(-9deg) scale(1); }
+}
+.mdxi-pulse {
+  animation: mdxiPulse 2.4s ease-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mdxi-pulse { animation: none !important; }
 }

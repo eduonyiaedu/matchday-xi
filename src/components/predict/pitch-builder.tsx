@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -10,10 +10,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  BottomSheet,
+  BottomSheetContent,
+  BottomSheetTitle,
+} from "@/components/ui/bottom-sheet";
 import { Jersey } from "@/components/predict/jersey";
+import { PerfectXiTakeover } from "@/components/predict/perfect-xi-takeover";
 import { cn } from "@/lib/utils";
+import { FORMATIONS, FORMATION_LAYOUTS, type Formation } from "@/lib/formations";
 
 interface SquadPlayer {
   id: string;
@@ -22,6 +27,8 @@ interface SquadPlayer {
   shirtNumber: number | null;
   squadTier: "SENIOR" | "U21";
   photoUrl: string | null;
+  /** "Started last 5" — oldest to newest, derived from stored official lineups. */
+  form: boolean[];
 }
 
 interface ExistingSlot {
@@ -30,79 +37,32 @@ interface ExistingSlot {
   isCorrect: boolean | null;
 }
 
-export const FORMATIONS = ["4-4-2", "4-3-3", "4-2-3-1", "3-4-3"] as const;
-export type Formation = (typeof FORMATIONS)[number];
-
-interface SlotPosition {
-  slotIndex: number;
-  top: string;
-  left: string;
+interface OfficialStarter {
+  squadPlayerId: string | null;
+  name: string;
+  shirtNumber: number | null;
 }
-
-// Purely visual layouts — slotIndex 0 is always GK; 1-10 are free-form outfield regardless of
-// formation. Switching formations only redraws where each slotIndex is drawn on the pitch, it
-// never reassigns which player occupies which slot, so scoring (player-identity only, see
-// lib/scoring.ts) is completely unaffected by this choice.
-const FORMATION_LAYOUTS: Record<Formation, SlotPosition[]> = {
-  "4-4-2": [
-    { slotIndex: 0, top: "92%", left: "50%" },
-    { slotIndex: 1, top: "72%", left: "14%" },
-    { slotIndex: 2, top: "72%", left: "38%" },
-    { slotIndex: 3, top: "72%", left: "62%" },
-    { slotIndex: 4, top: "72%", left: "86%" },
-    { slotIndex: 5, top: "46%", left: "14%" },
-    { slotIndex: 6, top: "46%", left: "38%" },
-    { slotIndex: 7, top: "46%", left: "62%" },
-    { slotIndex: 8, top: "46%", left: "86%" },
-    { slotIndex: 9, top: "18%", left: "36%" },
-    { slotIndex: 10, top: "18%", left: "64%" },
-  ],
-  "4-3-3": [
-    { slotIndex: 0, top: "92%", left: "50%" },
-    { slotIndex: 1, top: "72%", left: "14%" },
-    { slotIndex: 2, top: "72%", left: "38%" },
-    { slotIndex: 3, top: "72%", left: "62%" },
-    { slotIndex: 4, top: "72%", left: "86%" },
-    { slotIndex: 5, top: "50%", left: "25%" },
-    { slotIndex: 6, top: "50%", left: "50%" },
-    { slotIndex: 7, top: "50%", left: "75%" },
-    { slotIndex: 8, top: "20%", left: "20%" },
-    { slotIndex: 9, top: "20%", left: "50%" },
-    { slotIndex: 10, top: "20%", left: "80%" },
-  ],
-  "4-2-3-1": [
-    { slotIndex: 0, top: "92%", left: "50%" },
-    { slotIndex: 1, top: "74%", left: "14%" },
-    { slotIndex: 2, top: "74%", left: "38%" },
-    { slotIndex: 3, top: "74%", left: "62%" },
-    { slotIndex: 4, top: "74%", left: "86%" },
-    { slotIndex: 5, top: "56%", left: "35%" },
-    { slotIndex: 6, top: "56%", left: "65%" },
-    { slotIndex: 7, top: "36%", left: "20%" },
-    { slotIndex: 8, top: "36%", left: "50%" },
-    { slotIndex: 9, top: "36%", left: "80%" },
-    { slotIndex: 10, top: "16%", left: "50%" },
-  ],
-  "3-4-3": [
-    { slotIndex: 0, top: "92%", left: "50%" },
-    { slotIndex: 1, top: "74%", left: "25%" },
-    { slotIndex: 2, top: "74%", left: "50%" },
-    { slotIndex: 3, top: "74%", left: "75%" },
-    { slotIndex: 4, top: "50%", left: "14%" },
-    { slotIndex: 5, top: "50%", left: "38%" },
-    { slotIndex: 6, top: "50%", left: "62%" },
-    { slotIndex: 7, top: "50%", left: "86%" },
-    { slotIndex: 8, top: "20%", left: "20%" },
-    { slotIndex: 9, top: "20%", left: "50%" },
-    { slotIndex: 10, top: "20%", left: "80%" },
-  ],
-};
 
 const OUTFIELD_POSITION_LABELS: { position: SquadPlayer["position"]; label: string }[] = [
   { position: "DEFENDER", label: "Defenders" },
   { position: "MIDFIELDER", label: "Midfielders" },
   { position: "FORWARD", label: "Forwards" },
 ];
+
+const LONG_PRESS_MS = 380;
+
+function FormDots({ form }: { form: boolean[] }) {
+  return (
+    <span className="flex gap-[3px]">
+      {form.map((started, i) => (
+        <span
+          key={i}
+          className={cn("size-[5px] rounded-full", started ? "bg-gold" : "bg-white/18")}
+        />
+      ))}
+    </span>
+  );
+}
 
 export function PitchBuilder({
   fixtureId,
@@ -116,6 +76,11 @@ export function PitchBuilder({
   pointsAwarded,
   isPerfectXi,
   scored,
+  officialLineup,
+  matchLabel,
+  matchdayLabel,
+  perfectXiCount,
+  predictionId,
 }: {
   fixtureId: string;
   teamId: string;
@@ -128,24 +93,37 @@ export function PitchBuilder({
   pointsAwarded: number | null;
   isPerfectXi: boolean | null;
   scored: boolean;
+  /** Only passed once scored — the confirmed XI, used for the "who started instead" reveal. */
+  officialLineup?: OfficialStarter[];
+  /** The following four are only needed when isPerfectXi (feed the takeover celebration). */
+  matchLabel?: string;
+  matchdayLabel?: string;
+  perfectXiCount?: number;
+  predictionId?: string;
 }) {
   const router = useRouter();
   const [formation, setFormation] = useState<Formation>(initialFormation);
+  const [takeoverOpen, setTakeoverOpen] = useState(false);
   const [slots, setSlots] = useState<Record<number, string | null>>(() => {
     const initial: Record<number, string | null> = {};
     for (let i = 0; i <= 10; i++) initial[i] = null;
     for (const s of existingSlots) initial[s.slotIndex] = s.squadPlayerId;
     return initial;
   });
-  const [pickerSlot, setPickerSlot] = useState<number | null>(null);
+  const [drawerSlot, setDrawerSlot] = useState<number | null>(null);
+  const [query, setQuery] = useState("");
+  const [statPlayerId, setStatPlayerId] = useState<string | null>(null);
+  const [revealed, setRevealed] = useState<Record<number, boolean>>({});
   const [saving, setSaving] = useState(false);
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const playerById = useMemo(() => new Map(squad.map((p) => [p.id, p])), [squad]);
   const usedPlayerIds = useMemo(
     () => new Set(Object.values(slots).filter((v): v is string => v !== null)),
     [slots],
   );
-  const isComplete = Object.values(slots).every((v) => v !== null);
+  const filled = Object.values(slots).filter(Boolean).length;
+  const isComplete = filled === 11;
 
   function availablePlayersFor(slotIndex: number) {
     const wantsGoalkeeper = slotIndex === 0;
@@ -155,10 +133,11 @@ export function PitchBuilder({
     });
   }
 
-  // Senior players grouped by position first (GK slot: just goalkeepers, no sub-groups needed),
-  // followed by a single separate "Under 21" section — not further subgrouped by position.
   function groupedPlayersFor(slotIndex: number): { label: string; players: SquadPlayer[] }[] {
-    const available = availablePlayersFor(slotIndex);
+    const q = query.trim().toLowerCase();
+    const available = availablePlayersFor(slotIndex).filter(
+      (p) => !q || p.name.toLowerCase().includes(q) || String(p.shirtNumber ?? "").includes(q),
+    );
     const senior = available.filter((p) => p.squadTier === "SENIOR");
     const u21 = available.filter((p) => p.squadTier === "U21");
 
@@ -177,7 +156,23 @@ export function PitchBuilder({
 
   function selectPlayer(slotIndex: number, playerId: string) {
     setSlots((prev) => ({ ...prev, [slotIndex]: playerId }));
-    setPickerSlot(null);
+    setDrawerSlot(null);
+    setQuery("");
+  }
+
+  function clearSlot(slotIndex: number) {
+    setSlots((prev) => ({ ...prev, [slotIndex]: null }));
+    setDrawerSlot(null);
+    setQuery("");
+  }
+
+  function handlePressStart(playerId: string | null) {
+    if (!playerId) return;
+    clearTimeout(pressTimer.current);
+    pressTimer.current = setTimeout(() => setStatPlayerId(playerId), LONG_PRESS_MS);
+  }
+  function handlePressEnd() {
+    clearTimeout(pressTimer.current);
   }
 
   async function submit() {
@@ -208,131 +203,322 @@ export function PitchBuilder({
 
   const correctBySlot = new Map(existingSlots.map((s) => [s.slotIndex, s.isCorrect]));
   const slotPositions = FORMATION_LAYOUTS[formation];
+  const statPlayer = statPlayerId ? playerById.get(statPlayerId) : null;
+
+  // "Who else started" reveal — no true positional mapping exists (outfield slots are
+  // free-form), so this pairs each miss with an official starter not already matched to one of
+  // the user's correct picks, by iteration order. An honest "who else played," not a claim about
+  // a specific tactical swap.
+  const revealFor = useMemo(() => {
+    if (!scored || !officialLineup) return new Map<number, OfficialStarter>();
+    const correctIds = new Set(
+      existingSlots.filter((s) => s.isCorrect).map((s) => s.squadPlayerId),
+    );
+    const unclaimed = officialLineup.filter((p) => !p.squadPlayerId || !correctIds.has(p.squadPlayerId));
+    const missedSlotIndices = existingSlots
+      .filter((s) => s.isCorrect === false)
+      .sort((a, b) => a.slotIndex - b.slotIndex)
+      .map((s) => s.slotIndex);
+    const map = new Map<number, OfficialStarter>();
+    missedSlotIndices.forEach((slotIdx, i) => {
+      if (unclaimed[i]) map.set(slotIdx, unclaimed[i]);
+    });
+    return map;
+  }, [scored, officialLineup, existingSlots]);
+
+  function renderSquadList(forSlot: number | null) {
+    if (forSlot === null) {
+      return <p className="p-4 text-sm text-muted-foreground">Tap a pitch slot to pick a player.</p>;
+    }
+    const groups = groupedPlayersFor(forSlot);
+    const currentPlayerId = slots[forSlot];
+    return (
+      <>
+        <div className="px-4 pb-2.5">
+          <div className="flex items-center justify-between">
+            <p className="font-heading text-[17px] font-semibold uppercase">
+              {forSlot === 0 ? "Pick your keeper" : "Pick a player"}
+            </p>
+          </div>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search the squad"
+            className="mt-2.5 w-full rounded-[9px] bg-pitch px-3 py-2.5 text-sm text-chalk shadow-[inset_0_0_0_1px_rgba(245,243,236,0.12)] outline-none"
+          />
+          {currentPlayerId && (
+            <button
+              type="button"
+              onClick={() => clearSlot(forSlot)}
+              className="mt-2 flex min-h-11 w-full items-center justify-center gap-2 rounded-[9px] py-2.5 font-heading text-[13px] font-semibold tracking-[0.06em] text-destructive uppercase shadow-[inset_0_0_0_1px_rgba(200,16,46,0.4)]"
+            >
+              Remove {playerById.get(currentPlayerId)?.name}
+            </button>
+          )}
+        </div>
+        <div className="flex-1 overflow-y-auto px-2.5 pb-4">
+          {groups.map((group) => (
+            <div key={group.label} className="mb-2">
+              <p className="mt-2.5 mb-1 px-2 font-mono text-[9px] tracking-[0.18em] text-muted-foreground uppercase">
+                {group.label}
+              </p>
+              {group.players.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => selectPlayer(forSlot, p.id)}
+                  className="flex min-h-11 w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left hover:bg-white/5"
+                >
+                  <span className="w-6 font-mono text-[11px] text-club">{p.shirtNumber ?? ""}</span>
+                  <span className="flex-1 text-[13.5px] font-medium">{p.name}</span>
+                  <FormDots form={p.form} />
+                </button>
+              ))}
+            </div>
+          ))}
+          {groups.length === 0 && (
+            <p className="p-3 text-sm text-muted-foreground">No eligible players left — free up a slot first.</p>
+          )}
+        </div>
+      </>
+    );
+  }
+
+  const saveButton = (
+    <Button
+      size="lg"
+      className="w-full"
+      variant={isComplete ? "default" : "secondary"}
+      disabled={!isComplete || saving}
+      onClick={submit}
+    >
+      {saving ? "Saving..." : isComplete ? "Save prediction" : `Pick ${11 - filled} more`}
+    </Button>
+  );
 
   return (
-    <div className="flex flex-col gap-4">
-      {scored && pointsAwarded !== null && (
-        <div className="flex items-center gap-2">
-          <Badge className="text-base">{pointsAwarded} pts</Badge>
-          {isPerfectXi && <Badge variant="secondary">Perfect XI! +3 bonus</Badge>}
-        </div>
-      )}
-
-      {!locked && (
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">Formation</span>
-          <Select value={formation} onValueChange={(v) => setFormation(v as Formation)}>
-            <SelectTrigger className="w-32">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {FORMATIONS.map((f) => (
-                <SelectItem key={f} value={f}>
-                  {f}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <span className="text-xs text-muted-foreground">Visual only — doesn&apos;t affect scoring.</span>
-        </div>
-      )}
-
-      <div className="relative mx-auto aspect-[2/3] w-full max-w-md rounded-lg bg-gradient-to-b from-green-600 to-green-700">
-        <div className="absolute inset-4 rounded border-2 border-white/40" />
-        <div className="absolute top-1/2 left-1/2 h-24 w-24 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/40" />
-
-        {slotPositions.map(({ slotIndex, top, left }) => {
-          const playerId = slots[slotIndex];
-          const player = playerId ? playerById.get(playerId) : null;
-          const isCorrect = correctBySlot.get(slotIndex);
-          return (
-            <button
-              key={slotIndex}
-              type="button"
-              disabled={locked}
-              onClick={() => setPickerSlot(slotIndex)}
-              style={{ top, left }}
-              className={cn(
-                "absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1",
-                locked && "cursor-default",
-              )}
-            >
-              <div
-                className={cn(
-                  "flex items-center justify-center rounded-full",
-                  scored && isCorrect === true && "ring-2 ring-emerald-500",
-                  scored && isCorrect === false && "opacity-70 ring-2 ring-red-400",
-                )}
-              >
-                <Jersey
-                  primary={teamColors.primary}
-                  secondary={teamColors.secondary}
-                  number={player?.shirtNumber ?? null}
-                  empty={!player}
-                />
-              </div>
-              <span className="max-w-20 truncate rounded bg-black/60 px-1 text-[10px] text-white">
-                {player ? player.name : "Pick"}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      {locked ? (
-        existingSlots.length === 0 ? (
-          <p className="text-center text-sm text-muted-foreground">
-            You didn&apos;t submit a prediction before this fixture locked.
-          </p>
-        ) : (
-          <p className="text-center text-sm text-muted-foreground">
-            Locked — this prediction is final.
-          </p>
-        )
-      ) : (
-        <Button size="lg" disabled={!isComplete || saving} onClick={submit}>
-          {saving ? "Saving..." : "Save prediction"}
-        </Button>
-      )}
-
-      <Dialog open={pickerSlot !== null} onOpenChange={(open) => !open && setPickerSlot(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{pickerSlot === 0 ? "Pick your goalkeeper" : "Pick a player"}</DialogTitle>
-          </DialogHeader>
-          <div className="grid max-h-96 gap-1 overflow-y-auto">
-            {pickerSlot !== null &&
-              groupedPlayersFor(pickerSlot).map((group) => (
-                <div key={group.label} className="flex flex-col gap-0.5">
-                  <p className="mt-2 px-3 text-xs font-semibold tracking-wide text-muted-foreground uppercase first:mt-0">
-                    {group.label}
-                  </p>
-                  {group.players.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => selectPlayer(pickerSlot, p.id)}
-                      className="flex items-center justify-between rounded-md px-3 py-2 text-left text-sm hover:bg-muted"
-                    >
-                      <span className="flex items-center gap-2">
-                        {p.name}
-                        {p.shirtNumber != null && (
-                          <span className="text-xs text-muted-foreground">#{p.shirtNumber}</span>
-                        )}
-                      </span>
-                      <span className="text-xs text-muted-foreground">{p.position}</span>
-                    </button>
-                  ))}
-                </div>
-              ))}
-            {pickerSlot !== null && groupedPlayersFor(pickerSlot).length === 0 && (
-              <p className="p-3 text-sm text-muted-foreground">
-                No eligible players left — free up a slot first.
-              </p>
+    <div className="flex flex-col gap-4 md:flex-row md:items-start md:gap-6">
+      <div className="flex flex-1 flex-col gap-4">
+        {scored && pointsAwarded !== null && (
+          <div className="flex items-center gap-3">
+            <div className="text-center">
+              <p className="font-heading text-4xl font-semibold text-gold">+{pointsAwarded}</p>
+              <p className="font-mono text-[9px] tracking-[0.14em] text-muted-foreground uppercase">Points</p>
+            </div>
+            {isPerfectXi && (
+              <Button variant="outline" size="sm" onClick={() => setTakeoverOpen(true)}>
+                See the Perfect XI moment
+              </Button>
             )}
           </div>
+        )}
+
+        {!locked && (
+          <div className="flex items-center gap-2.5">
+            <div className="h-[7px] flex-1 overflow-hidden rounded-full bg-white/10">
+              <div
+                className="h-full rounded-full transition-[width] duration-300 ease-out"
+                style={{
+                  width: `${(filled / 11) * 100}%`,
+                  background: `linear-gradient(90deg, var(--club), ${teamColors.primary})`,
+                }}
+              />
+            </div>
+            <span className="font-mono text-xs font-bold text-gold">{filled}/11</span>
+          </div>
+        )}
+
+        {!locked && (
+          <div className="flex gap-1.5 overflow-x-auto">
+            {FORMATIONS.map((f) => (
+              <button
+                key={f}
+                type="button"
+                onClick={() => setFormation(f)}
+                className={cn(
+                  "shrink-0 rounded-full px-3 py-2 font-mono text-[11px] tracking-[0.06em] whitespace-nowrap",
+                  formation === f
+                    ? "font-bold text-pitch"
+                    : "text-muted-foreground shadow-[inset_0_0_0_1px_rgba(245,243,236,0.14)]",
+                )}
+                style={formation === f ? { backgroundColor: teamColors.primary } : undefined}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="relative aspect-2/3 overflow-hidden rounded-[14px] shadow-[inset_0_0_0_1.5px_rgba(245,243,236,0.16)] turf">
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_-6%,rgba(245,243,236,0.16),rgba(11,31,23,0)_58%)]" />
+          <div className="absolute inset-3 rounded border border-white/18" />
+          <div className="absolute inset-x-0 top-1/2 h-px bg-white/18" />
+          <div className="absolute top-1/2 left-1/2 size-21 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/18" />
+          <div className="absolute bottom-3 left-1/2 h-13 w-33 -translate-x-1/2 border border-b-0 border-white/18" />
+          <div className="absolute top-3 left-1/2 h-13 w-33 -translate-x-1/2 border border-t-0 border-white/18" />
+
+          {slotPositions.map(({ slotIndex, top, left }) => {
+            const playerId = slots[slotIndex];
+            const player = playerId ? playerById.get(playerId) : null;
+            const isCorrect = correctBySlot.get(slotIndex);
+            const reveal = revealed[slotIndex] ? revealFor.get(slotIndex) : undefined;
+            const shownName = reveal ? reveal.name : player ? player.name.split(" ").slice(-1)[0] : slotIndex === 0 ? "GK" : "Pick";
+            const shownNumber = reveal ? reveal.shirtNumber : (player?.shirtNumber ?? null);
+            return (
+              <button
+                key={slotIndex}
+                type="button"
+                disabled={scored ? isCorrect !== false : locked}
+                onClick={() => {
+                  if (scored) {
+                    if (isCorrect === false) setRevealed((r) => ({ ...r, [slotIndex]: !r[slotIndex] }));
+                    return;
+                  }
+                  if (!locked) setDrawerSlot(slotIndex);
+                }}
+                onMouseDown={() => !scored && !locked && handlePressStart(playerId)}
+                onMouseUp={handlePressEnd}
+                onMouseLeave={handlePressEnd}
+                onTouchStart={() => !scored && !locked && handlePressStart(playerId)}
+                onTouchEnd={handlePressEnd}
+                style={{ top, left, transitionProperty: "top,left", transitionDuration: "340ms" }}
+                className={cn(
+                  "absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 transition-[top,left] ease-[cubic-bezier(0.3,0.8,0.3,1)] select-none",
+                  locked && !scored && "cursor-default",
+                )}
+              >
+                <div
+                  className={cn(
+                    "rounded-xl",
+                    scored && isCorrect === true && "shadow-[0_0_0_2px_var(--gold)]",
+                    scored && isCorrect === false && !reveal && "opacity-70",
+                    !scored && !player && !locked && "mdxi-pulse rounded-[11px]",
+                    !scored && player && "motion-safe:animate-[mdxiPop_260ms_cubic-bezier(0.2,0.9,0.3,1)]",
+                  )}
+                  style={!scored && !player ? ({ "--pulse-color": teamColors.primary } as React.CSSProperties) : undefined}
+                >
+                  <Jersey
+                    primary={reveal ? "#F5F3EC" : teamColors.primary}
+                    secondary={reveal ? "#0B1F17" : teamColors.secondary}
+                    number={shownNumber}
+                    empty={!player && !reveal}
+                  />
+                </div>
+                <span
+                  className={cn(
+                    "max-w-20 truncate rounded bg-black/60 px-1.5 py-0.5 text-[10px]",
+                    player || reveal ? "font-medium text-chalk" : "font-mono tracking-[0.08em] text-chalk/70",
+                  )}
+                >
+                  {shownName}
+                </span>
+                {scored && isCorrect === false && (
+                  <span className="font-mono text-[7.5px] tracking-[0.14em] text-chalk/40 uppercase">
+                    {reveal ? "Started" : "Tap"}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {locked ? (
+          existingSlots.length === 0 ? (
+            <p className="text-center text-sm text-muted-foreground">
+              You didn&apos;t submit a prediction before this fixture locked.
+            </p>
+          ) : !scored ? (
+            <p className="text-center text-sm text-muted-foreground">Locked — this prediction is final.</p>
+          ) : null
+        ) : (
+          <div className="md:hidden">{saveButton}</div>
+        )}
+        {!locked && (
+          <p className="text-center text-xs text-muted-foreground">
+            Formation is cosmetic — only who you pick scores. Long-press a shirt for form.
+          </p>
+        )}
+      </div>
+
+      {!locked && (
+        <>
+          {/* Mobile: bottom-sheet drawer. Non-modal — the squad list also renders live in the
+              desktop sidebar below, and Radix's modal body-lock (pointer-events: none on <body>)
+              would freeze that sidebar too since it sits outside this dialog's own DOM subtree. */}
+          <BottomSheet open={drawerSlot !== null} onOpenChange={(open) => !open && setDrawerSlot(null)} modal={false}>
+            <BottomSheetContent heightClassName="h-[62vh]" className="flex md:hidden" overlayClassName="md:hidden">
+              <BottomSheetTitle className="sr-only">Pick a player</BottomSheetTitle>
+              {renderSquadList(drawerSlot)}
+            </BottomSheetContent>
+          </BottomSheet>
+
+          {/* Desktop: always-visible sidebar */}
+          <div className="hidden md:flex md:w-80 md:shrink-0 md:flex-col md:gap-3 md:rounded-[14px] md:bg-pitch-light md:pt-4 md:shadow-[inset_0_0_0_1px_rgba(245,243,236,0.06)]">
+            <div className="flex max-h-125 flex-1 flex-col">{renderSquadList(drawerSlot)}</div>
+            <div className="px-4 pb-4">{saveButton}</div>
+          </div>
+        </>
+      )}
+
+      <Dialog open={!!statPlayer} onOpenChange={(open) => !open && setStatPlayerId(null)}>
+        <DialogContent>
+          {statPlayer && (
+            <>
+              <DialogHeader>
+                <div className="flex items-center gap-3">
+                  <div
+                    className="flex size-11 items-center justify-center rounded-[10px] font-mono text-base font-bold"
+                    style={{ backgroundColor: teamColors.primary, color: teamColors.secondary }}
+                  >
+                    {statPlayer.shirtNumber ?? ""}
+                  </div>
+                  <div>
+                    <DialogTitle>{statPlayer.name}</DialogTitle>
+                    <p className="mt-0.5 font-mono text-[10px] tracking-[0.12em] text-muted-foreground uppercase">
+                      {statPlayer.position}
+                      {statPlayer.squadTier === "U21" ? " · U21" : ""}
+                    </p>
+                  </div>
+                </div>
+              </DialogHeader>
+              <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                <span className="text-xs text-muted-foreground">Started last 5</span>
+                <FormDots form={statPlayer.form} />
+              </div>
+            </>
+          )}
         </DialogContent>
       </Dialog>
+
+      {takeoverOpen && isPerfectXi && matchLabel && matchdayLabel && predictionId && pointsAwarded !== null && (
+        <PerfectXiTakeover
+          matchLabel={matchLabel}
+          matchdayLabel={matchdayLabel}
+          formation={formation}
+          rows={existingSlots
+            .slice()
+            .sort((a, b) => a.slotIndex - b.slotIndex)
+            .map((s) => {
+              const p = playerById.get(s.squadPlayerId);
+              return {
+                pos: s.slotIndex === 0 ? "GK" : POS_ABBREV[p?.position ?? "MIDFIELDER"],
+                number: p?.shirtNumber ?? null,
+                name: p?.name ?? "",
+              };
+            })}
+          pointsAwarded={pointsAwarded}
+          perfectXiCount={perfectXiCount ?? 1}
+          predictionId={predictionId}
+          onClose={() => setTakeoverOpen(false)}
+        />
+      )}
     </div>
   );
 }
+
+const POS_ABBREV: Record<SquadPlayer["position"], string> = {
+  GOALKEEPER: "GK",
+  DEFENDER: "DEF",
+  MIDFIELDER: "MID",
+  FORWARD: "FWD",
+};
