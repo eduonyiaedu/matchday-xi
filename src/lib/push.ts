@@ -1,0 +1,52 @@
+import webpush from "web-push";
+import { prisma } from "@/lib/prisma";
+
+let configured = false;
+
+function ensureConfigured(): boolean {
+  if (configured) return true;
+  const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+  const privateKey = process.env.VAPID_PRIVATE_KEY;
+  if (!publicKey || !privateKey) return false;
+  webpush.setVapidDetails(`mailto:${process.env.ALERT_EMAIL_TO ?? "admin@matchday-xi.app"}`, publicKey, privateKey);
+  configured = true;
+  return true;
+}
+
+export interface PushPayload {
+  title: string;
+  body: string;
+  /** App-relative path opened when the notification is tapped, e.g. "/predict/<id>". */
+  url: string;
+}
+
+/**
+ * Best-effort push send — never throws. Missing VAPID keys just logs (matches the pattern in
+ * lib/notify.ts): losing a notification is far better than breaking the cron job that triggered
+ * it. A subscription that comes back expired (410/404) is deleted so it stops being retried.
+ */
+export async function sendPushToUsers(userIds: string[], payload: PushPayload): Promise<void> {
+  if (userIds.length === 0) return;
+  if (!ensureConfigured()) {
+    console.warn(`[push] VAPID keys not set — skipping push to ${userIds.length} user(s): ${payload.title}`);
+    return;
+  }
+
+  const subscriptions = await prisma.pushSubscription.findMany({ where: { userId: { in: userIds } } });
+  const body = JSON.stringify(payload);
+
+  await Promise.all(
+    subscriptions.map(async (sub) => {
+      try {
+        await webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, body);
+      } catch (error) {
+        const statusCode = (error as { statusCode?: number }).statusCode;
+        if (statusCode === 404 || statusCode === 410) {
+          await prisma.pushSubscription.delete({ where: { id: sub.id } }).catch(() => {});
+        } else {
+          console.error("[push] send failed:", error);
+        }
+      }
+    }),
+  );
+}

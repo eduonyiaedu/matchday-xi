@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { LocalTime } from "@/components/ui/local-time";
 import { TierDisc, tierFromPerfectXiCount } from "@/components/leaderboard/tier-disc";
 import { HomeAvatar } from "@/components/home/home-avatar";
+import { PushOptIn } from "@/components/push/push-opt-in";
 import { computeGlobalRank, computeLeagueStandings } from "@/lib/rank";
 import { getNextEligibleFixture, isPredictionWindowOpen, predictionOpensAt } from "@/lib/next-fixture";
 import { getTeamColors } from "@/lib/team-colors";
@@ -82,6 +83,8 @@ export default async function HomePage() {
           lockedAt={user.favoriteTeamLockedAt?.toISOString() ?? null}
         />
       </div>
+
+      <PushOptIn />
 
       {/* Next-fixture hero */}
       <Card className="overflow-hidden p-0" style={{ boxShadow: `0 10px 30px rgba(0,0,0,0.45), 0 0 0 1px ${colors.primary}45` }}>

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { scorePrediction } from "@/lib/scoring";
+import { sendPushToUsers } from "@/lib/push";
 import type { LineupSource } from "@/generated/prisma/enums";
 
 export interface LineupEntryInput {
@@ -86,14 +87,25 @@ export async function applyOfficialLineup(
   const refreshed = await prisma.officialLineup.findMany({ where: { fixtureId } });
   const fixture = await prisma.fixture.findUniqueOrThrow({
     where: { id: fixtureId },
-    select: { homeTeamId: true, awayTeamId: true },
+    include: { homeTeam: true, awayTeam: true },
   });
   const bothDone =
     refreshed.some((l) => l.teamId === fixture.homeTeamId) &&
     refreshed.some((l) => l.teamId === fixture.awayTeamId);
 
-  if (bothDone) {
+  if (bothDone && fixture.status !== "SCORED") {
     await prisma.fixture.update({ where: { id: fixtureId }, data: { status: "SCORED" } });
+
+    // One push per fixture, to everyone who predicted it (global or private-league) — guarded by
+    // the status check above so re-saving an already-scored lineup (e.g. an admin correction)
+    // never re-notifies.
+    const allPredictors = await prisma.prediction.findMany({ where: { fixtureId }, select: { userId: true } });
+    const userIds = [...new Set(allPredictors.map((p) => p.userId))];
+    await sendPushToUsers(userIds, {
+      title: "Scoring is in",
+      body: `${fixture.homeTeam.shortName ?? fixture.homeTeam.name} vs ${fixture.awayTeam.shortName ?? fixture.awayTeam.name} has been scored.`,
+      url: "/history",
+    });
   }
 
   return { resolvedCount: resolvedPlayerIds.length, predictionsScored: predictions.length, bothDone };

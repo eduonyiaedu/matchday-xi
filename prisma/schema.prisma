@@ -64,6 +64,7 @@ enum JobName {
   LOCK_SWEEP
   DAILY_ROLLUP
   SYNC_SHIRT_NUMBERS
+  NOTIFY_SWEEP
 }
 
 enum JobStatus {
@@ -108,6 +109,7 @@ model User {
   monthlyPrizeDrawsWon MonthlyPrizeDraw[]
   createdLeagues       PrivateLeague[]           @relation("LeagueCreator")
   leagueMemberships    PrivateLeagueMembership[]
+  pushSubscriptions    PushSubscription[]
 
   @@index([favoriteTeamId])
   @@index([totalPoints])
@@ -191,31 +193,35 @@ model Competition {
 }
 
 model Fixture {
-  id                   String        @id @default(uuid())
+  id                    String        @id @default(uuid())
   /// football-data.org match id
-  externalId           Int           @unique
+  externalId            Int           @unique
   /// API-Football fixture id, resolved by date+team match once known
-  apiFootballFixtureId Int?          @unique
-  competitionId        String
-  competition          Competition   @relation(fields: [competitionId], references: [id])
-  homeTeamId           String
-  homeTeam             Team          @relation("HomeTeam", fields: [homeTeamId], references: [id])
-  awayTeamId           String
-  awayTeam             Team          @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  apiFootballFixtureId  Int?          @unique
+  competitionId         String
+  competition           Competition   @relation(fields: [competitionId], references: [id])
+  homeTeamId            String
+  homeTeam              Team          @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  awayTeamId            String
+  awayTeam              Team          @relation("AwayTeam", fields: [awayTeamId], references: [id])
   /// Source of truth for locking, from football-data.org.
-  kickoffAt            DateTime
+  kickoffAt             DateTime
   /// Stored copy of kickoffAt - 2h, for indexed queries (rulebook §5).
-  lockAt               DateTime
-  status               FixtureStatus @default(SCHEDULED)
+  lockAt                DateTime
+  status                FixtureStatus @default(SCHEDULED)
   /// Count of lineup-check cron attempts so far (bounded retry window, rulebook §6).
-  lineupCheckAttempts  Int           @default(0)
+  lineupCheckAttempts   Int           @default(0)
   /// Set the first time an automated fetch attempt fails for this fixture, so the founder gets
   /// exactly one alert email per fixture rather than one per 5-minute retry.
-  lineupAlertSentAt    DateTime?
-  homeScore            Int?
-  awayScore            Int?
-  createdAt            DateTime      @default(now())
-  updatedAt            DateTime      @updatedAt
+  lineupAlertSentAt     DateTime?
+  /// Set once the "predictions are open" push has gone out, so it only ever fires once per fixture.
+  openNotifiedAt        DateTime?
+  /// Set once the "30 minutes to lock" push has gone out, so it only ever fires once per fixture.
+  lockWarningNotifiedAt DateTime?
+  homeScore             Int?
+  awayScore             Int?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
 
   predictions     Prediction[]
   officialLineups OfficialLineup[]
@@ -389,6 +395,21 @@ model PrivateLeagueMembership {
   respondedAt DateTime?
 
   @@unique([leagueId, userId])
+}
+
+/// One row per browser/device a user has enabled push notifications on (Web Push API). Endpoint
+/// is the unique identity a browser assigns per subscription — deleted automatically once a send
+/// to it comes back expired/gone (see lib/push.ts).
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 /// Logs every cron execution so the founder has something to check if automation seems stuck.

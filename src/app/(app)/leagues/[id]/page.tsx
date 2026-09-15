@@ -10,6 +10,8 @@ import { JoinLeagueButton } from "@/components/leagues/join-league-button";
 import { MembershipRequests } from "@/components/leagues/membership-requests";
 import { FixtureEligibilityBadge } from "@/components/predict/fixture-eligibility-badge";
 import { getNextEligibleFixture, isPredictionWindowOpen, predictionOpensAt } from "@/lib/next-fixture";
+import { getLeagueLeaderboardRows } from "@/lib/rank";
+import { LeaderboardTable } from "@/components/leaderboard/leaderboard-table";
 
 export default async function LeagueDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -40,8 +42,14 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
 
   let fixtures: Awaited<ReturnType<typeof getEligibleFixtures>> = [];
   let nextFixtureId: string | null = null;
+  let leaderboardRows: Awaited<ReturnType<typeof getLeagueLeaderboardRows>> = [];
+  let history: Awaited<ReturnType<typeof getLeagueHistory>> = [];
   if (isApproved && myMembership?.teamId) {
-    fixtures = await getEligibleFixtures(myMembership.teamId, league);
+    [fixtures, leaderboardRows, history] = await Promise.all([
+      getEligibleFixtures(myMembership.teamId, league),
+      getLeagueLeaderboardRows(league.id),
+      getLeagueHistory(league.id, user.id),
+    ]);
     const next = await getNextEligibleFixture(myMembership.teamId);
     nextFixtureId = next?.id ?? null;
   }
@@ -122,7 +130,6 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
                       </CardDescription>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Badge variant="secondary">Predicting for {myMembership!.team?.name}</Badge>
                       {locked && <Badge variant="outline">Locked</Badge>}
                       {!locked && (
                         <FixtureEligibilityBadge isNext={isNext} windowOpen={windowOpen} opensAt={predictionOpensAt(f)} />
@@ -148,8 +155,69 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
           </div>
         </div>
       )}
+
+      {isApproved && (
+        <div>
+          <h2 className="mb-2 text-lg font-semibold">Standings</h2>
+          <Card>
+            <CardContent className="pt-4">
+              <LeaderboardTable rows={leaderboardRows} />
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {isApproved && (
+        <div>
+          <h2 className="mb-2 text-lg font-semibold">Your history in this league</h2>
+          {history.length === 0 && (
+            <Card>
+              <CardContent className="py-7 text-center text-sm text-muted-foreground">
+                No scored predictions yet.
+              </CardContent>
+            </Card>
+          )}
+          <div className="flex flex-col gap-2">
+            {history.map((p) => (
+              <Link key={p.id} href={`/leagues/${league.id}/predict/${p.fixtureId}`}>
+                <Card className="transition-colors hover:bg-white/5">
+                  <CardHeader className="flex flex-row items-center justify-between">
+                    <div>
+                      <CardTitle className="text-base">
+                        {p.fixture.homeTeam.name} vs {p.fixture.awayTeam.name}
+                      </CardTitle>
+                      <CardDescription>
+                        <LocalTime iso={p.fixture.kickoffAt.toISOString()} dateOnly />
+                      </CardDescription>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {p.fixture.status === "VOIDED" ? (
+                        <Badge variant="outline">Voided</Badge>
+                      ) : (
+                        <>
+                          <Badge>{p.pointsAwarded} pts</Badge>
+                          {p.isPerfectXi && <Badge variant="secondary">Perfect XI</Badge>}
+                        </>
+                      )}
+                    </div>
+                  </CardHeader>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
+}
+
+async function getLeagueHistory(leagueId: string, userId: string) {
+  return prisma.prediction.findMany({
+    where: { privateLeagueId: leagueId, userId, pointsAwarded: { not: null } },
+    include: { fixture: { include: { homeTeam: true, awayTeam: true } } },
+    orderBy: { fixture: { kickoffAt: "desc" } },
+    take: 50,
+  });
 }
 
 async function getEligibleFixtures(
