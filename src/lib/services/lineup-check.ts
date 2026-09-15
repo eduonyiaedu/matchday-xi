@@ -106,13 +106,19 @@ export async function checkLineupsAndScore() {
   const windowEnd = new Date(now.getTime() + WINDOW_START_MIN * 60_000);
 
   // Eligible: kickoff is between now+55min and now+75min (i.e. we're 55-75 min out), OR we're
-  // already past that window and still missing a lineup (safety-net retries up to kickoff).
+  // already past that window and still missing a lineup (safety-net retries up to kickoff) — and,
+  // per the comment above (which this condition previously didn't actually implement), for a
+  // bounded stretch AFTER kickoff too, since a fixture stuck at LOCKED with kickoffAt now in the
+  // past would otherwise drop out of every future query forever, silently, without ever reaching
+  // the "flag for manual review" branch below.
+  const pastKickoffCutoff = new Date(now.getTime() - 6 * 60 * 60_000);
   const fixtures = await prisma.fixture.findMany({
     where: {
       status: { in: ["LOCKED", "LINEUPS_FETCHED", "NEEDS_MANUAL_REVIEW"] },
       OR: [
         { kickoffAt: { gte: windowStart, lte: windowEnd } },
         { kickoffAt: { gt: now, lt: windowStart } },
+        { kickoffAt: { gte: pastKickoffCutoff, lte: now } },
       ],
     },
     include: { homeTeam: true, awayTeam: true, officialLineups: true },

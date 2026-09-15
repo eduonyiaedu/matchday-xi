@@ -45,7 +45,17 @@ class ApiFootballClient {
       const body = await res.text().catch(() => "");
       throw new Error(`API-Football ${path} failed: ${res.status} ${body}`);
     }
-    return res.json() as Promise<T>;
+    const body = await res.json();
+    // API-Football returns HTTP 200 even when the request itself is rejected (wrong plan, date
+    // outside the plan's allowed range, season not covered, etc.) — the rejection only shows up as
+    // a non-empty `errors` object alongside an empty `response`. Left unchecked, every caller here
+    // silently reads that as "nothing found yet" and retries forever without ever surfacing why.
+    const errors = body?.errors;
+    const hasErrors = errors && (Array.isArray(errors) ? errors.length > 0 : Object.keys(errors).length > 0);
+    if (hasErrors) {
+      throw new Error(`API-Football ${path} rejected: ${JSON.stringify(errors)}`);
+    }
+    return body as T;
   }
 
   /** Find the API-Football fixture matching a football-data.org fixture by date + team names. */

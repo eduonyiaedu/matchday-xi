@@ -66,7 +66,16 @@ async function enrichU21Squad(teamId: string, players: ApiFootballSquadPlayer[])
   for (const entry of players) {
     if (matchPlayerName(entry.name, seniorRows)) continue; // already a senior player, skip
 
-    const existingU21Id = matchPlayerName(entry.name, u21Rows);
+    // Check the stable apiFootballId first — name matching is fuzzy and can miss a player it
+    // already created on a previous run (whitespace/diacritic drift, matcher threshold), which
+    // would otherwise try to create a second row with the same apiFootballId and hit the unique
+    // constraint. The id, once seen, is authoritative; name matching is only for the first sighting.
+    const existingByApiFootballId = await prisma.squadPlayer.findUnique({
+      where: { apiFootballId: entry.id },
+      select: { id: true, squadTier: true },
+    });
+    if (existingByApiFootballId?.squadTier === "SENIOR") continue; // already a senior player, skip
+    const existingU21Id = existingByApiFootballId?.id ?? matchPlayerName(entry.name, u21Rows);
     if (existingU21Id) {
       await prisma.squadPlayer.update({
         where: { id: existingU21Id },
