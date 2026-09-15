@@ -152,11 +152,11 @@ export default async function HomePage() {
             </CardHeader>
             <CardContent className="flex flex-col gap-2.5">
               <div className="flex items-center gap-3">
-                <span className="w-7 font-mono text-[15px] font-bold text-gold">+1</span>
+                <span className="w-9 font-mono text-[15px] font-bold text-gold">+10</span>
                 <span className="text-sm">for every player who actually starts</span>
               </div>
               <div className="flex items-center gap-3">
-                <span className="w-7 font-mono text-[15px] font-bold text-gold">+3</span>
+                <span className="w-9 font-mono text-[15px] font-bold text-gold">+25</span>
                 <span className="text-sm">bonus if you call all eleven</span>
               </div>
             </CardContent>

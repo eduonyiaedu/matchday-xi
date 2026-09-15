@@ -8,6 +8,7 @@ import { getNextEligibleFixture, isPredictionWindowOpen, predictionOpensAt } fro
 import { getTeamColors } from "@/lib/team-colors";
 import { getRecentForm, formFor } from "@/lib/player-form";
 import { LocalTime } from "@/components/ui/local-time";
+import { BackLink } from "@/components/ui/back-link";
 
 export default async function PredictPage({
   params,
@@ -77,6 +78,7 @@ export default async function PredictPage({
   return (
     <div className="flex flex-col gap-4">
       <div>
+        <BackLink fallbackHref="/fixtures" />
         <h1 className="text-2xl font-bold">
           {isHome ? "vs" : "@"} {opponent.name}
         </h1>

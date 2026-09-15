@@ -10,7 +10,7 @@ const FEATURES = [
   },
   {
     title: "Scored the moment it drops",
-    body: "+1 point per player who starts, +3 bonus for a perfect XI. Locks two hours before kickoff.",
+    body: "+10 points per player who starts, +25 bonus for a perfect XI. Locks two hours before kickoff.",
   },
   {
     title: "Climb two tables",

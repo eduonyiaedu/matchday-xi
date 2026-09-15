@@ -4,12 +4,12 @@ import { scorePrediction } from "@/lib/scoring";
 const elevenIds = (prefix: string) => Array.from({ length: 11 }, (_, i) => `${prefix}${i}`);
 
 describe("scorePrediction", () => {
-  it("awards 1 point per correctly predicted player", () => {
+  it("awards 10 points per correctly predicted player", () => {
     const predicted = elevenIds("p");
     const official = [...predicted.slice(0, 4), "x1", "x2", "x3", "x4", "x5", "x6", "x7"];
     const result = scorePrediction(predicted, official);
     expect(result.correctSquadPlayerIds).toHaveLength(4);
-    expect(result.pointsAwarded).toBe(4);
+    expect(result.pointsAwarded).toBe(40);
     expect(result.isPerfectXi).toBe(false);
   });
 
@@ -19,10 +19,10 @@ describe("scorePrediction", () => {
     expect(result.isPerfectXi).toBe(false);
   });
 
-  it("awards +3 bonus on top of the 11 base points for a perfect XI", () => {
+  it("awards +25 bonus on top of the 110 base points for a perfect XI", () => {
     const ids = elevenIds("p");
     const result = scorePrediction(ids, [...ids]);
-    expect(result.pointsAwarded).toBe(14);
+    expect(result.pointsAwarded).toBe(135);
     expect(result.isPerfectXi).toBe(true);
   });
 
@@ -31,14 +31,14 @@ describe("scorePrediction", () => {
     const shuffled = [...ids].reverse();
     const result = scorePrediction(ids, shuffled);
     expect(result.isPerfectXi).toBe(true);
-    expect(result.pointsAwarded).toBe(14);
+    expect(result.pointsAwarded).toBe(135);
   });
 
   it("does not award the perfect-XI bonus for 10/11 correct", () => {
     const ids = elevenIds("p");
     const official = [...ids.slice(0, 10), "someone-else"];
     const result = scorePrediction(ids, official);
-    expect(result.pointsAwarded).toBe(10);
+    expect(result.pointsAwarded).toBe(100);
     expect(result.isPerfectXi).toBe(false);
   });
 
@@ -47,6 +47,6 @@ describe("scorePrediction", () => {
     const official = ["a", "b", "c"];
     const result = scorePrediction(predicted, official);
     expect(result.correctSquadPlayerIds).toEqual(["a", "a", "b"]);
-    expect(result.pointsAwarded).toBe(3);
+    expect(result.pointsAwarded).toBe(30);
   });
 });

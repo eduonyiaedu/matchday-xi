@@ -8,6 +8,7 @@ import { getNextEligibleFixture, isPredictionWindowOpen, predictionOpensAt } fro
 import { getTeamColors } from "@/lib/team-colors";
 import { getRecentForm, formFor } from "@/lib/player-form";
 import { LocalTime } from "@/components/ui/local-time";
+import { BackLink } from "@/components/ui/back-link";
 
 export default async function LeaguePredictPage({
   params,
@@ -85,6 +86,7 @@ export default async function LeaguePredictPage({
   return (
     <div className="flex flex-col gap-4">
       <div>
+        <BackLink fallbackHref={`/leagues/${leagueId}`} />
         <h1 className="text-2xl font-bold">
           {team.name} vs {opponent.name}
         </h1>

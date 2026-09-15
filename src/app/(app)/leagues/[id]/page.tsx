@@ -108,6 +108,17 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
 
       {isApproved && (
         <div>
+          <h2 className="mb-2 text-lg font-semibold">Standings</h2>
+          <Card>
+            <CardContent className="pt-4">
+              <LeaderboardTable rows={leaderboardRows} />
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {isApproved && (
+        <div>
           <h2 className="mb-2 text-lg font-semibold">Predict in this league</h2>
           {fixtures.length === 0 && (
             <p className="text-sm text-muted-foreground">No eligible fixtures right now.</p>
@@ -153,17 +164,6 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
               );
             })}
           </div>
-        </div>
-      )}
-
-      {isApproved && (
-        <div>
-          <h2 className="mb-2 text-lg font-semibold">Standings</h2>
-          <Card>
-            <CardContent className="pt-4">
-              <LeaderboardTable rows={leaderboardRows} />
-            </CardContent>
-          </Card>
         </div>
       )}
 
