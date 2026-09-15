@@ -72,9 +72,7 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
             Team rule:{" "}
             {league.teamRule === "SINGLE_TEAM"
               ? `everyone predicts for ${league.restrictedTeam?.name}`
-              : league.teamRule === "SINGLE_LEAGUE"
-                ? "any club from the specified competition (each member picks their own at join time)"
-                : "any Premier League club (each member picks their own at join time)"}
+              : "any Premier League club (each member picks their own at join time)"}
           </p>
           <p>
             Active window: <LocalTime iso={league.startDate.toISOString()} dateOnly /> –{" "}

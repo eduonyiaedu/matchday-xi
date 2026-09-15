@@ -23,12 +23,11 @@ export const changeTeamSchema = z.object({
 
 export const createPrivateLeagueSchema = z.object({
   name: z.string().min(3).max(60),
-  teamRule: z.enum(["ANY_TEAM", "SINGLE_LEAGUE", "SINGLE_TEAM"]),
+  teamRule: z.enum(["ANY_TEAM", "SINGLE_TEAM"]),
   // The creator's own permanent team choice for this league — required always, even for
-  // ANY_TEAM/SINGLE_LEAGUE, since it becomes their own membership row (see POST /api/leagues).
+  // ANY_TEAM, since it becomes their own membership row (see POST /api/leagues).
   teamId: z.string().uuid(),
   restrictedTeamId: z.string().uuid().optional(),
-  restrictedCompetitionId: z.string().uuid().optional(),
   startDate: z.coerce.date(),
   endDate: z.coerce.date(),
 });

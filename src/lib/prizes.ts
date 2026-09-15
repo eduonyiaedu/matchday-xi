@@ -14,6 +14,43 @@ function monthRangeUtc(monthKeyStr: string): { start: Date; end: Date; dayCount:
 }
 
 /**
+ * Read-only "so far this month" progress for the prizes page — unlike computeMonthlyEligibility
+ * (which only ever runs once a month, for the month that just fully elapsed, and persists a row),
+ * this compares against days/fixtures that have actually happened yet so it's meaningful mid-month.
+ * Nothing here is persisted — it's recomputed on every page view.
+ */
+export async function computeLiveMonthlyProgress(userId: string, favoriteTeamId: string) {
+  const now = new Date();
+  const monthKeyStr = monthKey(now.getUTCFullYear(), now.getUTCMonth());
+  const { start } = monthRangeUtc(monthKeyStr);
+  const elapsedDays = Math.floor((now.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+
+  const loginCount = await prisma.dailyLoginLog.count({
+    where: { userId, loginDate: { gte: start, lte: now } },
+  });
+  const loggedInEveryDaySoFar = loginCount >= elapsedDays;
+
+  const teamFixturesSoFar = await prisma.fixture.findMany({
+    where: {
+      kickoffAt: { gte: start, lte: now },
+      status: { not: "VOIDED" },
+      OR: [{ homeTeamId: favoriteTeamId }, { awayTeamId: favoriteTeamId }],
+    },
+    select: { id: true },
+  });
+
+  let predictedEveryMatchdaySoFar = true;
+  if (teamFixturesSoFar.length > 0) {
+    const predictedCount = await prisma.prediction.count({
+      where: { userId, privateLeagueId: null, fixtureId: { in: teamFixturesSoFar.map((f) => f.id) } },
+    });
+    predictedEveryMatchdaySoFar = predictedCount >= teamFixturesSoFar.length;
+  }
+
+  return { month: monthKeyStr, loggedInEveryDaySoFar, predictedEveryMatchdaySoFar };
+}
+
+/**
  * Rulebook §9: eligible for the monthly random draw if the user (a) submitted a global/team
  * prediction for every one of their team's matchdays that month, and (b) logged in every day
  * of that month. Only ever run for a month that has fully elapsed.

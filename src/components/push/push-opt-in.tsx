@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
@@ -46,14 +47,17 @@ export function PushOptIn() {
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(publicKey),
       });
-      await fetch("/api/push/subscribe", {
+      const res = await fetch("/api/push/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(subscription.toJSON()),
       });
+      if (!res.ok) throw new Error("Couldn't save your subscription");
       setVisible(false);
     } catch {
-      setVisible(false);
+      // Browser-level subscribe (or the save to our server) failed — leave the card up so the
+      // user can retry, rather than silently dismissing it and looking "on" when it isn't.
+      toast.error("Couldn't turn on notifications. Try again?");
     } finally {
       setLoading(false);
     }

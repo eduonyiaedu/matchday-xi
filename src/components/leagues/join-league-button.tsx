@@ -26,6 +26,8 @@ export function JoinLeagueButton({
 }: {
   leagueId: string;
   status: "PENDING" | "APPROVED" | "DENIED" | null;
+  // Widened to the full DB enum (not just what the create form now offers) since this reads
+  // whatever's already stored on the league — old data could in principle still be SINGLE_LEAGUE.
   teamRule: "ANY_TEAM" | "SINGLE_LEAGUE" | "SINGLE_TEAM";
   teams: { id: string; name: string }[];
 }) {

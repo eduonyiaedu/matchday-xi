@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 
 const schema = z.object({
   teamId: z.string().uuid(),
-  squadPlayerIds: z.array(z.string().uuid()).min(1).max(11),
+  squadPlayerIds: z.array(z.string().uuid()).length(11),
 });
 
 /** Manual fallback for the automated API-Football lineup fetch — same scoring path either way. */

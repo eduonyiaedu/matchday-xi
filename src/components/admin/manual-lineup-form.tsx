@@ -33,8 +33,11 @@ export function ManualLineupForm({
   function toggle(id: string) {
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(id)) {
+        next.delete(id);
+      } else if (next.size < 11) {
+        next.add(id);
+      }
       return next;
     });
   }
@@ -82,8 +85,8 @@ export function ManualLineupForm({
         {filtered.length === 0 && <p className="col-span-full text-sm text-muted-foreground">No players match.</p>}
       </div>
 
-      <Button onClick={save} disabled={saving || selected.size === 0} className="self-start">
-        {saving ? "Saving..." : "Save lineup"}
+      <Button onClick={save} disabled={saving || selected.size !== 11} className="self-start">
+        {saving ? "Saving..." : selected.size === 11 ? "Save lineup" : `Pick ${11 - selected.size} more`}
       </Button>
     </div>
   );

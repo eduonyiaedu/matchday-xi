@@ -72,7 +72,6 @@ export async function POST(request: NextRequest) {
         slug: slugify(data.name),
         teamRule: data.teamRule,
         restrictedTeamId: data.teamRule === "SINGLE_TEAM" ? data.restrictedTeamId : undefined,
-        restrictedCompetitionId: data.teamRule === "SINGLE_LEAGUE" ? data.restrictedCompetitionId : undefined,
         startDate: data.startDate,
         endDate: data.endDate,
         // isPaid/entryFee intentionally omitted — always default to free (false/null) in this build.

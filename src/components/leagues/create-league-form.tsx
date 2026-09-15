@@ -16,7 +16,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 
-type TeamRule = "ANY_TEAM" | "SINGLE_LEAGUE" | "SINGLE_TEAM";
+type TeamRule = "ANY_TEAM" | "SINGLE_TEAM";
 
 export function CreateLeagueForm({ teams }: { teams: { id: string; name: string }[] }) {
   const router = useRouter();
@@ -75,7 +75,6 @@ export function CreateLeagueForm({ teams }: { teams: { id: string; name: string 
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="ANY_TEAM">Any Premier League club</SelectItem>
-            <SelectItem value="SINGLE_LEAGUE">Only clubs from one competition</SelectItem>
             <SelectItem value="SINGLE_TEAM">Everyone must use the same club</SelectItem>
           </SelectContent>
         </Select>

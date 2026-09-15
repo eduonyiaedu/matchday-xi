@@ -1,22 +1,17 @@
 import { getOrCreateCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { computeLiveMonthlyProgress } from "@/lib/prizes";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ComingSoonCard } from "@/components/prizes/coming-soon-card";
-
-function currentMonthKey(): string {
-  const now = new Date();
-  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
-}
 
 export default async function PrizesPage() {
   const user = await getOrCreateCurrentUser();
   if (!user) return null;
 
-  const month = currentMonthKey();
-  const eligibility = await prisma.monthlyPrizeEligibility.findUnique({
-    where: { userId_month: { userId: user.id, month } },
-  });
+  const progress = user.favoriteTeamId
+    ? await computeLiveMonthlyProgress(user.id, user.favoriteTeamId)
+    : null;
   const lastDraw = await prisma.monthlyPrizeDraw.findFirst({
     where: { drawnAt: { not: null } },
     orderBy: { month: "desc" },
@@ -52,15 +47,13 @@ export default async function PrizesPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-2 text-sm">
-          {eligibility ? (
+          {progress ? (
             <>
-              <p>Predicted every matchday so far: {eligibility.predictedEveryMatchday ? "✅" : "❌"}</p>
-              <p>Logged in every day so far: {eligibility.loggedInEveryDay ? "✅" : "❌"}</p>
+              <p>Predicted every matchday so far: {progress.predictedEveryMatchdaySoFar ? "✅" : "❌"}</p>
+              <p>Logged in every day so far: {progress.loggedInEveryDaySoFar ? "✅" : "❌"}</p>
             </>
           ) : (
-            <p className="text-muted-foreground">
-              Eligibility for {month} is calculated at month-end.
-            </p>
+            <p className="text-muted-foreground">Pick a favorite team to track your eligibility.</p>
           )}
           {lastDraw?.winner && (
             <p className="mt-2 text-muted-foreground">
