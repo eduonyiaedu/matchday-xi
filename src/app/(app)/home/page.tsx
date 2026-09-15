@@ -31,6 +31,14 @@ export default async function HomePage() {
   const isNewUser = user.totalPoints === 0 && predictionCount === 0;
   const colors = getTeamColors(user.favoriteTeam!.externalId);
 
+  const switchableTeams = user.favoriteTeamLockedAt
+    ? []
+    : await prisma.team.findMany({
+        where: { isPremierLeagueClub: true, isActive: true },
+        orderBy: { name: "asc" },
+        select: { id: true, name: true, shortName: true, crestUrl: true, externalId: true },
+      });
+
   const [globalRank, teamRank, memberships, nextFixture] = await Promise.all([
     computeGlobalRank(user),
     computeGlobalRank(user, favoriteTeamId),
@@ -80,7 +88,9 @@ export default async function HomePage() {
         <HomeAvatar
           initials={(user.favoriteTeam?.shortName ?? user.favoriteTeam?.name ?? "").slice(0, 3).toUpperCase()}
           teamName={user.favoriteTeam?.name ?? ""}
+          teamId={user.favoriteTeamId}
           lockedAt={user.favoriteTeamLockedAt?.toISOString() ?? null}
+          teams={switchableTeams}
         />
       </div>
 

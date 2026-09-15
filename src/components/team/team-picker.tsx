@@ -23,9 +23,19 @@ function initialsFor(team: TeamOption): string {
   return (team.shortName ?? team.name).slice(0, 3).toUpperCase();
 }
 
-export function TeamPicker({ teams }: { teams: TeamOption[] }) {
+export function TeamPicker({
+  teams,
+  initialTeamId,
+  onSuccess,
+}: {
+  teams: TeamOption[];
+  /** Pre-highlight the user's current club, e.g. when switching rather than picking for the first time. */
+  initialTeamId?: string | null;
+  /** Called after a successful switch instead of navigating to /home — e.g. to close a host sheet in place. */
+  onSuccess?: () => void;
+}) {
   const router = useRouter();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(initialTeamId ?? null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +57,12 @@ export function TeamPicker({ teams }: { teams: TeamOption[] }) {
       setError(body.error ?? "Something went wrong.");
       return;
     }
-    router.push("/home");
+    setConfirmOpen(false);
+    if (onSuccess) {
+      onSuccess();
+    } else {
+      router.push("/home");
+    }
     router.refresh();
   }
 
