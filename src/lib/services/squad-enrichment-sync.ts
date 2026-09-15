@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@/generated/prisma/client";
 import { apiFootballClient, type ApiFootballSquadPlayer } from "@/lib/api-football/client";
 import { API_FOOTBALL_CLUB_TEAM_IDS } from "@/lib/api-football/club-team-ids";
 import { matchPlayerName } from "@/lib/player-matching";
@@ -89,19 +90,28 @@ async function enrichU21Squad(teamId: string, players: ApiFootballSquadPlayer[])
       continue;
     }
 
-    await prisma.squadPlayer.create({
-      data: {
-        teamId,
-        footballDataId: null,
-        apiFootballId: entry.id,
-        name: entry.name,
-        position: mapApiFootballPosition(entry.position),
-        shirtNumber: entry.number ?? undefined,
-        photoUrl: entry.photo ?? undefined,
-        squadTier: "U21",
-      },
-    });
-    created++;
+    try {
+      await prisma.squadPlayer.create({
+        data: {
+          teamId,
+          footballDataId: null,
+          apiFootballId: entry.id,
+          name: entry.name,
+          position: mapApiFootballPosition(entry.position),
+          shirtNumber: entry.number ?? undefined,
+          photoUrl: entry.photo ?? undefined,
+          squadTier: "U21",
+        },
+      });
+      created++;
+    } catch (error) {
+      // This job also runs from an admin "sync now" button, so it can overlap with the scheduled
+      // cron — both can read the same "not yet created" state and race to create this player,
+      // and the loser hits the unique constraint here. The winner already created an equivalent
+      // row, so treat it the same as a check that a concurrent run had already recorded.
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") continue;
+      throw error;
+    }
   }
   return { created, matched };
 }

@@ -12,7 +12,10 @@ export async function computeGlobalRank(
 ): Promise<number> {
   const higherCount = await prisma.user.count({
     where: {
-      ...(favoriteTeamId ? { favoriteTeamId } : {}),
+      // Matches the leaderboard list's own filter — otherwise a user who never finished
+      // onboarding (no team, always 0 points) still counts toward everyone else's rank via the
+      // tiebreak, inflating it with accounts that never actually appear on the board.
+      favoriteTeamId: favoriteTeamId ?? { not: null },
       OR: [
         { totalPoints: { gt: user.totalPoints } },
         { totalPoints: user.totalPoints, perfectXiCount: { gt: user.perfectXiCount } },

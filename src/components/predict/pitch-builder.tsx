@@ -117,6 +117,9 @@ export function PitchBuilder({
   const [revealed, setRevealed] = useState<Record<number, boolean>>({});
   const [saving, setSaving] = useState(false);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // A completed long-press still ends in a trailing click (fired on mouseup/touchend) — without
+  // this, opening the stat card also immediately opens the picker drawer on top of it.
+  const longPressFiredRef = useRef(false);
 
   const playerById = useMemo(() => new Map(squad.map((p) => [p.id, p])), [squad]);
   const usedPlayerIds = useMemo(
@@ -169,8 +172,12 @@ export function PitchBuilder({
 
   function handlePressStart(playerId: string | null) {
     if (!playerId) return;
+    longPressFiredRef.current = false;
     clearTimeout(pressTimer.current);
-    pressTimer.current = setTimeout(() => setStatPlayerId(playerId), LONG_PRESS_MS);
+    pressTimer.current = setTimeout(() => {
+      longPressFiredRef.current = true;
+      setStatPlayerId(playerId);
+    }, LONG_PRESS_MS);
   }
   function handlePressEnd() {
     clearTimeout(pressTimer.current);
@@ -378,6 +385,10 @@ export function PitchBuilder({
                 type="button"
                 disabled={scored ? isCorrect !== false : locked}
                 onClick={() => {
+                  if (longPressFiredRef.current) {
+                    longPressFiredRef.current = false;
+                    return;
+                  }
                   if (scored) {
                     if (isCorrect === false) setRevealed((r) => ({ ...r, [slotIndex]: !r[slotIndex] }));
                     return;

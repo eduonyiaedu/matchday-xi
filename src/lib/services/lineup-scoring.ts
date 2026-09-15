@@ -59,6 +59,11 @@ export async function applyOfficialLineup(
       resolvedPlayerIds,
     );
     const correctSet = new Set(correctSquadPlayerIds);
+    // This same prediction may already have been scored once (a corrected lineup, or a second
+    // automated pass) — apply only the NET change against the user's denormalized totals rather
+    // than incrementing again on top of a prior award, which would double-count every re-score.
+    const pointsDelta = pointsAwarded - (prediction.pointsAwarded ?? 0);
+    const perfectXiDelta = (isPerfectXi ? 1 : 0) - (prediction.isPerfectXi ? 1 : 0);
 
     await prisma.$transaction(async (tx) => {
       await tx.prediction.update({
@@ -72,12 +77,12 @@ export async function applyOfficialLineup(
         });
       }
       // Private-league predictions score separately and never touch global/team totals (§12b).
-      if (!prediction.privateLeagueId) {
+      if (!prediction.privateLeagueId && (pointsDelta !== 0 || perfectXiDelta !== 0)) {
         await tx.user.update({
           where: { id: prediction.userId },
           data: {
-            totalPoints: { increment: pointsAwarded },
-            perfectXiCount: { increment: isPerfectXi ? 1 : 0 },
+            totalPoints: { increment: pointsDelta },
+            perfectXiCount: { increment: perfectXiDelta },
           },
         });
       }
