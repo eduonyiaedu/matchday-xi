@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/prisma";
-import { apiFootballClient, type ApiFootballLineup } from "@/lib/api-football/client";
+import { apiFootballClient } from "@/lib/api-football/client";
 import { matchPlayerName } from "@/lib/player-matching";
-import { scorePrediction } from "@/lib/scoring";
+import { applyOfficialLineup, type LineupEntryInput } from "@/lib/services/lineup-scoring";
+import { sendLineupAlert } from "@/lib/notify";
 
 // Rulebook §6: bounded retry window ~75 to 60 minutes before kickoff, checking every ~10 min.
 // This job runs every 5 min (GitHub Actions granularity) and widens the window slightly (to 55)
@@ -29,75 +30,11 @@ async function resolveSquadPlayerId(
   return matchedId;
 }
 
-async function storeOfficialLineupAndScore(
-  fixtureId: string,
-  teamId: string,
-  lineup: ApiFootballLineup,
-) {
-  const resolvedPlayerIds: string[] = [];
-
-  const officialLineup = await prisma.officialLineup.upsert({
-    where: { fixtureId_teamId: { fixtureId, teamId } },
-    update: { formation: lineup.formation ?? undefined, fetchedAt: new Date() },
-    create: { fixtureId, teamId, formation: lineup.formation ?? undefined },
-  });
-
-  // Clear out any previous (e.g. earlier pre-kickoff) entries — the final confirmed XI at
-  // kickoff supersedes an earlier announcement (rulebook §6).
-  await prisma.officialLineupPlayer.deleteMany({ where: { officialLineupId: officialLineup.id } });
-
-  for (const entry of lineup.startXI) {
-    const squadPlayerId = await resolveSquadPlayerId(teamId, entry.player.id, entry.player.name);
-    if (squadPlayerId) resolvedPlayerIds.push(squadPlayerId);
-    await prisma.officialLineupPlayer.create({
-      data: {
-        officialLineupId: officialLineup.id,
-        squadPlayerId,
-        rawApiFootballPlayerId: entry.player.id,
-        rawName: entry.player.name,
-        isGoalkeeper: entry.player.pos === "G",
-      },
-    });
-  }
-
-  const predictions = await prisma.prediction.findMany({
-    where: { fixtureId, teamId },
-    include: { slots: true },
-  });
-
-  for (const prediction of predictions) {
-    const predictedIds = prediction.slots.map((s) => s.squadPlayerId);
-    const { correctSquadPlayerIds, pointsAwarded, isPerfectXi } = scorePrediction(
-      predictedIds,
-      resolvedPlayerIds,
-    );
-    const correctSet = new Set(correctSquadPlayerIds);
-
-    await prisma.$transaction(async (tx) => {
-      await tx.prediction.update({
-        where: { id: prediction.id },
-        data: { pointsAwarded, isPerfectXi, scoredAt: new Date() },
-      });
-      for (const slot of prediction.slots) {
-        await tx.predictionSlot.update({
-          where: { id: slot.id },
-          data: { isCorrect: correctSet.has(slot.squadPlayerId) },
-        });
-      }
-      // Private-league predictions score separately and never touch global/team totals (§12b).
-      if (!prediction.privateLeagueId) {
-        await tx.user.update({
-          where: { id: prediction.userId },
-          data: {
-            totalPoints: { increment: pointsAwarded },
-            perfectXiCount: { increment: isPerfectXi ? 1 : 0 },
-          },
-        });
-      }
-    });
-  }
-
-  return resolvedPlayerIds.length;
+/** Sends the founder exactly one alert per fixture, the first time automated fetching fails. */
+async function alertOnce(fixture: { id: string; lineupAlertSentAt: Date | null; kickoffAt: Date }, matchLabel: string, reason: string) {
+  if (fixture.lineupAlertSentAt) return;
+  await sendLineupAlert({ fixtureId: fixture.id, matchLabel, kickoffAt: fixture.kickoffAt, reason });
+  await prisma.fixture.update({ where: { id: fixture.id }, data: { lineupAlertSentAt: new Date() } });
 }
 
 export async function checkLineupsAndScore() {
@@ -131,62 +68,80 @@ export async function checkLineupsAndScore() {
     const hasAway = fixture.officialLineups.some((l) => l.teamId === fixture.awayTeamId);
     if (hasHome && hasAway) continue; // shouldn't normally be selected, but guard anyway
 
-    await prisma.fixture.update({
-      where: { id: fixture.id },
-      data: { lineupCheckAttempts: { increment: 1 } },
-    });
+    const matchLabel = `${fixture.homeTeam.name} vs ${fixture.awayTeam.name}`;
 
-    let apiFootballFixtureId = fixture.apiFootballFixtureId;
-    if (!apiFootballFixtureId) {
-      const found = await apiFootballClient.findFixtureByDateAndTeams(
-        fixture.kickoffAt.toISOString(),
-        fixture.homeTeam.name,
-        fixture.awayTeam.name,
-      );
-      if (found) {
-        apiFootballFixtureId = found.fixture.id;
-        await prisma.fixture.update({ where: { id: fixture.id }, data: { apiFootballFixtureId } });
+    // Isolated per fixture — one fixture's failure (e.g. a data-source outage) must not stop the
+    // rest of this batch from being checked, and every failure path here gets exactly one alert
+    // email so the founder can step in with the manual-entry admin tool.
+    try {
+      await prisma.fixture.update({
+        where: { id: fixture.id },
+        data: { lineupCheckAttempts: { increment: 1 } },
+      });
+
+      let apiFootballFixtureId = fixture.apiFootballFixtureId;
+      if (!apiFootballFixtureId) {
+        const found = await apiFootballClient.findFixtureByDateAndTeams(
+          fixture.kickoffAt.toISOString(),
+          fixture.homeTeam.name,
+          fixture.awayTeam.name,
+        );
+        if (found) {
+          apiFootballFixtureId = found.fixture.id;
+          await prisma.fixture.update({ where: { id: fixture.id }, data: { apiFootballFixtureId } });
+        }
       }
-    }
 
-    if (!apiFootballFixtureId) {
-      results.push({ fixtureId: fixture.id, outcome: "api-football fixture not found yet" });
-      continue;
-    }
+      if (!apiFootballFixtureId) {
+        results.push({ fixtureId: fixture.id, outcome: "api-football fixture not found yet" });
+      } else {
+        const lineups = await apiFootballClient.getLineups(apiFootballFixtureId);
+        let foundAny = false;
 
-    const lineups = await apiFootballClient.getLineups(apiFootballFixtureId);
-    let foundAny = false;
+        for (const lineup of lineups) {
+          const teamId =
+            lineup.team.id === fixture.homeTeam.externalId
+              ? fixture.homeTeamId
+              : lineup.team.id === fixture.awayTeam.externalId
+                ? fixture.awayTeamId
+                : null;
+          if (!teamId) continue;
+          const already = teamId === fixture.homeTeamId ? hasHome : hasAway;
+          if (already) continue;
 
-    for (const lineup of lineups) {
-      const teamId =
-        lineup.team.id === fixture.homeTeam.externalId
-          ? fixture.homeTeamId
-          : lineup.team.id === fixture.awayTeam.externalId
-            ? fixture.awayTeamId
-            : null;
-      if (!teamId) continue;
-      const already = teamId === fixture.homeTeamId ? hasHome : hasAway;
-      if (already) continue;
-      await storeOfficialLineupAndScore(fixture.id, teamId, lineup);
-      foundAny = true;
-    }
+          const entries: LineupEntryInput[] = await Promise.all(
+            lineup.startXI.map(async (entry) => ({
+              squadPlayerId: await resolveSquadPlayerId(teamId, entry.player.id, entry.player.name),
+              rawApiFootballPlayerId: entry.player.id,
+              rawName: entry.player.name,
+              isGoalkeeper: entry.player.pos === "G",
+            })),
+          );
+          await applyOfficialLineup(fixture.id, teamId, entries, {
+            formation: lineup.formation,
+            source: "AUTOMATED",
+          });
+          foundAny = true;
+        }
 
-    const refreshed = await prisma.officialLineup.findMany({ where: { fixtureId: fixture.id } });
-    const bothDone =
-      refreshed.some((l) => l.teamId === fixture.homeTeamId) &&
-      refreshed.some((l) => l.teamId === fixture.awayTeamId);
-
-    if (bothDone) {
-      await prisma.fixture.update({ where: { id: fixture.id }, data: { status: "SCORED" } });
-      results.push({ fixtureId: fixture.id, outcome: "scored" });
-    } else if (foundAny) {
-      await prisma.fixture.update({ where: { id: fixture.id }, data: { status: "LINEUPS_FETCHED" } });
-      results.push({ fixtureId: fixture.id, outcome: "partial (one side found)" });
-    } else if (now >= fixture.kickoffAt) {
-      await prisma.fixture.update({ where: { id: fixture.id }, data: { status: "NEEDS_MANUAL_REVIEW" } });
-      results.push({ fixtureId: fixture.id, outcome: "kickoff passed, no lineup — flagged for review" });
-    } else {
-      results.push({ fixtureId: fixture.id, outcome: "no lineup yet, will retry" });
+        if (foundAny) {
+          const refreshed = await prisma.fixture.findUniqueOrThrow({ where: { id: fixture.id } });
+          if (refreshed.status !== "SCORED") {
+            await prisma.fixture.update({ where: { id: fixture.id }, data: { status: "LINEUPS_FETCHED" } });
+          }
+          results.push({ fixtureId: fixture.id, outcome: refreshed.status === "SCORED" ? "scored" : "partial (one side found)" });
+        } else if (now >= fixture.kickoffAt) {
+          await prisma.fixture.update({ where: { id: fixture.id }, data: { status: "NEEDS_MANUAL_REVIEW" } });
+          await alertOnce(fixture, matchLabel, "Kickoff passed with no official lineup found after retrying.");
+          results.push({ fixtureId: fixture.id, outcome: "kickoff passed, no lineup — flagged for review" });
+        } else {
+          results.push({ fixtureId: fixture.id, outcome: "no lineup yet, will retry" });
+        }
+      }
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      await alertOnce(fixture, matchLabel, reason);
+      results.push({ fixtureId: fixture.id, outcome: `error: ${reason}` });
     }
   }
 

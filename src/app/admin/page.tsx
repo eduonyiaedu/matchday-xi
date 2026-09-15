@@ -16,9 +16,12 @@ export default async function AdminPage() {
 
   const [recentJobs, unresolvedLineups, users] = await Promise.all([
     prisma.jobRun.findMany({ orderBy: { startedAt: "desc" }, take: 20 }),
+    // Anything not yet fully scored — lets the founder jump into manual entry early (e.g. a
+    // known API outage) rather than only after the automated retries have given up.
     prisma.fixture.findMany({
-      where: { status: "NEEDS_MANUAL_REVIEW" },
-      include: { homeTeam: true, awayTeam: true },
+      where: { status: { in: ["LOCKED", "LINEUPS_FETCHED", "NEEDS_MANUAL_REVIEW"] } },
+      include: { homeTeam: true, awayTeam: true, officialLineups: true },
+      orderBy: { kickoffAt: "asc" },
     }),
     prisma.user.findMany({ orderBy: { createdAt: "desc" }, take: 30 }),
   ]);
@@ -39,14 +42,26 @@ export default async function AdminPage() {
         {unresolvedLineups.length > 0 && (
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Needs manual review — no lineup found by kickoff</CardTitle>
+              <CardTitle className="text-base">Lineups not yet fully resolved</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-1 text-sm">
-              {unresolvedLineups.map((f) => (
-                <p key={f.id}>
-                  {f.homeTeam.name} vs {f.awayTeam.name} — <LocalTime iso={f.kickoffAt.toISOString()} />
-                </p>
-              ))}
+              {unresolvedLineups.map((f) => {
+                const sidesFound = f.officialLineups.length;
+                return (
+                  <Link
+                    key={f.id}
+                    href={`/admin/lineups/${f.id}`}
+                    className="flex items-center justify-between border-b py-1 last:border-0 hover:underline"
+                  >
+                    <span>
+                      {f.homeTeam.name} vs {f.awayTeam.name} — <LocalTime iso={f.kickoffAt.toISOString()} />
+                    </span>
+                    <Badge variant={f.status === "NEEDS_MANUAL_REVIEW" ? "destructive" : "secondary"}>
+                      {sidesFound}/2 sides · {f.status}
+                    </Badge>
+                  </Link>
+                );
+              })}
             </CardContent>
           </Card>
         )}

@@ -40,6 +40,11 @@ enum FixtureStatus {
   NEEDS_MANUAL_REVIEW
 }
 
+enum LineupSource {
+  AUTOMATED
+  MANUAL
+}
+
 enum PrivateLeagueTeamRule {
   ANY_TEAM
   SINGLE_LEAGUE
@@ -110,32 +115,32 @@ model User {
 
 /// The 20 Premier League clubs plus any non-PL opponents that appear in FA Cup / EFL Cup fixtures.
 model Team {
-  id                  String   @id @default(uuid())
+  id                       String    @id @default(uuid())
   /// football-data.org team id
-  externalId          Int      @unique
-  name                String
-  shortName           String?
-  crestUrl            String?
+  externalId               Int       @unique
+  name                     String
+  shortName                String?
+  crestUrl                 String?
   /// True for the 20 clubs users may select as their favorite.
-  isPremierLeagueClub Boolean   @default(false)
-  isActive            Boolean   @default(true)
+  isPremierLeagueClub      Boolean   @default(false)
+  isActive                 Boolean   @default(true)
   /// Last time this team's squad was pulled from football-data.org. Used to batch squad syncs
   /// (oldest-synced-first, a few teams per run) so a single sync job never bursts past
   /// football-data.org's free-tier 10-requests/minute cap — see lib/services/fixture-sync.ts.
-  squadLastSyncedAt   DateTime?
+  squadLastSyncedAt        DateTime?
   /// Last time this team's shirt numbers + U21 roster were pulled from API-Football (separate
   /// cadence/cursor from squadLastSyncedAt — see lib/services/squad-enrichment-sync.ts).
   apiFootballSquadSyncedAt DateTime?
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
 
   squadPlayers      SquadPlayer[]
   usersFavoring     User[]
-  homeFixtures      Fixture[]         @relation("HomeTeam")
-  awayFixtures      Fixture[]         @relation("AwayTeam")
+  homeFixtures      Fixture[]                 @relation("HomeTeam")
+  awayFixtures      Fixture[]                 @relation("AwayTeam")
   predictions       Prediction[]
   officialLineups   OfficialLineup[]
-  restrictedLeagues PrivateLeague[]   @relation("SingleTeamRestriction")
+  restrictedLeagues PrivateLeague[]           @relation("SingleTeamRestriction")
   leagueMemberships PrivateLeagueMembership[]
 
   @@index([isPremierLeagueClub])
@@ -181,7 +186,7 @@ model Competition {
   externalId String @unique
   name       String
 
-  fixtures          Fixture[]
+  fixtures            Fixture[]
   restrictedByLeagues PrivateLeague[]
 }
 
@@ -204,6 +209,9 @@ model Fixture {
   status               FixtureStatus @default(SCHEDULED)
   /// Count of lineup-check cron attempts so far (bounded retry window, rulebook §6).
   lineupCheckAttempts  Int           @default(0)
+  /// Set the first time an automated fetch attempt fails for this fixture, so the founder gets
+  /// exactly one alert email per fixture rather than one per 5-minute retry.
+  lineupAlertSentAt    DateTime?
   homeScore            Int?
   awayScore            Int?
   createdAt            DateTime      @default(now())
@@ -268,15 +276,18 @@ model PredictionSlot {
   @@unique([predictionId, squadPlayerId])
 }
 
-/// The confirmed XI fetched from API-Football, keyed by (fixture, team) since either side's fans may be predicting.
+/// The confirmed XI, keyed by (fixture, team) since either side's fans may be predicting. Usually
+/// fetched from API-Football automatically; `source` records when the founder entered it by hand
+/// instead (via the admin lineup tool), typically after an automated-fetch failure alert.
 model OfficialLineup {
-  id        String   @id @default(uuid())
+  id        String       @id @default(uuid())
   fixtureId String
-  fixture   Fixture  @relation(fields: [fixtureId], references: [id])
+  fixture   Fixture      @relation(fields: [fixtureId], references: [id])
   teamId    String
-  team      Team     @relation(fields: [teamId], references: [id])
+  team      Team         @relation(fields: [teamId], references: [id])
   formation String?
-  fetchedAt DateTime @default(now())
+  source    LineupSource @default(AUTOMATED)
+  fetchedAt DateTime     @default(now())
 
   players OfficialLineupPlayer[]
 
@@ -290,7 +301,9 @@ model OfficialLineupPlayer {
   /// Null when player-matching couldn't confidently resolve this name — surfaced on the admin page.
   squadPlayerId          String?
   squadPlayer            SquadPlayer?   @relation(fields: [squadPlayerId], references: [id])
-  rawApiFootballPlayerId Int
+  /// Null for a manually-entered row (source: MANUAL on the parent lineup) — there's no
+  /// API-Football identity to record since the admin picked the squad player directly.
+  rawApiFootballPlayerId Int?
   rawName                String
   isGoalkeeper           Boolean        @default(false)
 
