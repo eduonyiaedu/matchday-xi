@@ -7,7 +7,10 @@ import {
 import type { PlayerPosition } from "@/generated/prisma/enums";
 import { voidFixtureAndReversePoints } from "@/lib/services/void-fixture";
 
-const SYNC_WINDOW_DAYS = 45;
+// 45 days wasn't always enough to keep 5 upcoming fixtures in view for every club — international
+// breaks and cup rounds can leave a 3+ week gap between a club's league fixtures, so a shorter
+// window sometimes surfaced only 3-4. 90 days comfortably covers that in practice.
+const SYNC_WINDOW_DAYS = 90;
 // football-data.org's free tier is 10 requests/minute. Squads rarely change (only during
 // transfer windows), so instead of resyncing all 20 clubs' squads every run — which would burst
 // well past the rate limit and take minutes even with the client's own throttling — each run

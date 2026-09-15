@@ -25,6 +25,7 @@ export default async function FixturesPage() {
         predictions: { where: { userId: user.id, privateLeagueId: null }, select: { id: true } },
       },
       orderBy: { kickoffAt: "asc" },
+      take: 5,
     }),
     getNextEligibleFixture(user.favoriteTeamId),
   ]);

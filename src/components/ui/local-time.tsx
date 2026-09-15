@@ -15,21 +15,20 @@ function subscribe() {
  * it. Server Components run on Vercel's UTC clock, so a raw `date.toLocaleString()` call there
  * silently renders UTC, not the viewer's real timezone — this component fixes that.
  */
+// HH:MM, 24-hour, no seconds — applied everywhere a time is shown, both here and in the GMT
+// bracket alongside it.
+const TIME_OPTIONS: Intl.DateTimeFormatOptions = { hour: "2-digit", minute: "2-digit", hour12: false };
+
 export function LocalTime({ iso, dateOnly = false }: { iso: string; dateOnly?: boolean }) {
   const date = new Date(iso);
   const utcString = dateOnly
     ? date.toLocaleDateString("en-GB", { timeZone: "UTC" })
-    : date.toLocaleString("en-GB", { timeZone: "UTC" });
-  const gmtClock = date.toLocaleTimeString("en-GB", {
-    timeZone: "UTC",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
+    : date.toLocaleString("en-GB", { timeZone: "UTC", ...TIME_OPTIONS });
+  const gmtClock = date.toLocaleTimeString("en-GB", { timeZone: "UTC", ...TIME_OPTIONS });
 
   const localString = useSyncExternalStore(
     subscribe,
-    () => (dateOnly ? date.toLocaleDateString() : date.toLocaleString()),
+    () => (dateOnly ? date.toLocaleDateString() : date.toLocaleString(undefined, TIME_OPTIONS)),
     () => utcString,
   );
 

@@ -232,5 +232,6 @@ async function getEligibleFixtures(
     },
     include: { homeTeam: true, awayTeam: true },
     orderBy: { kickoffAt: "asc" },
+    take: 5,
   });
 }

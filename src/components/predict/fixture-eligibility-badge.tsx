@@ -2,9 +2,10 @@ import { Badge } from "@/components/ui/badge";
 import { LocalTime } from "@/components/ui/local-time";
 
 /**
- * Shown next to a fixture that isn't currently actionable — either it's not the team's next
- * fixture yet, or it is but the 24h-before-kickoff window hasn't opened. Renders nothing (the
- * caller shows its own "Build lineup" action instead) once both conditions are satisfied.
+ * Shown next to a fixture that isn't currently actionable because the 24h-before-kickoff window
+ * hasn't opened yet. Renders nothing when it's not the team's next fixture yet either — the
+ * caller's own disabled button ("Not yet your next match") already says that, so a second badge
+ * repeating it is redundant — or once both conditions are satisfied and it's actionable.
  */
 export function FixtureEligibilityBadge({
   isNext,
@@ -16,7 +17,7 @@ export function FixtureEligibilityBadge({
   opensAt: Date;
 }) {
   if (!isNext) {
-    return <Badge variant="outline">Predict your next match first</Badge>;
+    return null;
   }
   if (!windowOpen) {
     return (
