@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { ImageResponse } from "next/og";
+import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getTeamColors } from "@/lib/team-colors";
 import { tierFromPerfectXiCount } from "@/components/leaderboard/tier-disc";
@@ -7,34 +8,220 @@ import { FORMATION_LAYOUTS, type Formation } from "@/lib/formations";
 
 export const runtime = "nodejs";
 
+const CHALK = "#F5F3EC";
+const MUTED = "#8A9A90";
+const GOLD = "#F0B429";
+
+const PREDICTION_INCLUDE = {
+  user: { select: { displayName: true, username: true, perfectXiCount: true } },
+  team: { select: { name: true, shortName: true, externalId: true } },
+  fixture: {
+    include: { homeTeam: { select: { name: true, shortName: true } }, awayTeam: { select: { name: true, shortName: true } } },
+  },
+  slots: { select: { slotIndex: true, isCorrect: true, squadPlayer: { select: { name: true, shirtNumber: true } } } },
+} satisfies Prisma.PredictionInclude;
+
+type PredictionWithRelations = Prisma.PredictionGetPayload<{ include: typeof PREDICTION_INCLUDE }>;
+
 // Deliberately unauthenticated — share images must be fetchable by external platforms (Twitter/
 // Instagram link previews, a plain <img> tag) without session cookies. predictionId is a
-// non-guessable UUID, and everything rendered here (name, username, club, fixture, score) is
-// exactly what the user chose to share by hitting the button, nothing more sensitive.
+// non-guessable UUID, and everything rendered here (name, username, club, fixture, XI) is exactly
+// what the user chose to share by hitting the button, nothing more sensitive. A prediction only
+// renders once it's locked (see the `locked` check below) — before that it's still editable, and
+// sharing it early would let other members of a private league copy an unlocked pick.
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ predictionId: string }> },
 ) {
   const { predictionId } = await params;
   const format = request.nextUrl.searchParams.get("format") === "story" ? "story" : "square";
+  const width = 1080;
+  const height = format === "story" ? 1920 : 1080;
 
   const prediction = await prisma.prediction.findUnique({
     where: { id: predictionId },
-    include: {
-      user: { select: { displayName: true, username: true, perfectXiCount: true } },
-      team: { select: { name: true, shortName: true, externalId: true } },
-      fixture: {
-        include: { homeTeam: { select: { name: true, shortName: true } }, awayTeam: { select: { name: true, shortName: true } } },
-      },
-      slots: { select: { slotIndex: true, isCorrect: true } },
-    },
+    include: PREDICTION_INCLUDE,
   });
 
-  if (!prediction || prediction.pointsAwarded === null) {
+  if (!prediction) {
+    return new Response("Not found", { status: 404 });
+  }
+
+  const locked = new Date() >= prediction.fixture.lockAt;
+  if (!locked) {
     return new Response("Not found", { status: 404 });
   }
 
   const colors = getTeamColors(prediction.team.externalId);
+  const layout = FORMATION_LAYOUTS[(prediction.formation as Formation) ?? "4-4-2"] ?? FORMATION_LAYOUTS["4-4-2"];
+  const slotByIndex = new Map(prediction.slots.map((s) => [s.slotIndex, s]));
+
+  const scored = prediction.pointsAwarded !== null;
+  const fonts = await loadFonts();
+
+  return new ImageResponse(
+    scored
+      ? resultCard({ prediction, colors, layout, slotByIndex, format })
+      : predictedLineupCard({ prediction, colors, layout, slotByIndex, format }),
+    { width, height, fonts },
+  );
+}
+
+// next/og's ImageResponse (satori) has no built-in fallback font on the Node runtime — without an
+// explicit `fonts` array it has no metrics to lay text out with at all, which doesn't error, it
+// just collapses every text box to ~zero height and stacks them on top of each other. Fetched once
+// per server instance and reused (module-level cache), same technique satori's own docs recommend
+// for pulling a specific static weight from Google Fonts (the CSS endpoint serves woff2 to a
+// modern UA, but satori needs ttf/otf — spoofing an old UA gets the ttf link instead).
+let fontsPromise: Promise<{ name: string; data: ArrayBuffer; weight: 400 | 700; style: "normal" }[]> | null = null;
+function loadFonts() {
+  if (!fontsPromise) {
+    fontsPromise = Promise.all([loadGoogleFont("Inter", 400), loadGoogleFont("Inter", 700)]).then(
+      ([regular, bold]) => [
+        { name: "Inter", data: regular, weight: 400 as const, style: "normal" as const },
+        { name: "Inter", data: bold, weight: 700 as const, style: "normal" as const },
+      ],
+    );
+  }
+  return fontsPromise;
+}
+
+async function loadGoogleFont(family: string, weight: number): Promise<ArrayBuffer> {
+  const css = await fetch(`https://fonts.googleapis.com/css2?family=${family}:wght@${weight}`, {
+    headers: {
+      // A legacy UA gets a ttf/otf @font-face src back instead of woff2 — satori can't parse woff2.
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/534.34 (KHTML, like Gecko) Chrome/9.0.601.0 Safari/534.34",
+    },
+  }).then((r) => r.text());
+  const match = css.match(/src: url\(([^)]+)\)/);
+  if (!match) throw new Error(`Could not resolve a font URL for ${family} ${weight}`);
+  return fetch(match[1]).then((r) => r.arrayBuffer());
+}
+
+// `children` must be a real array of siblings, not a `<>...</>` Fragment — satori doesn't flatten
+// a Fragment passed as a single child through a function call, so a fragment here silently drops
+// flex layout entirely (every "sibling" collapses onto one line instead of stacking in a column).
+function baseFrame(format: "square" | "story", children: React.ReactNode[]) {
+  return (
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: format === "story" ? "flex-start" : "center",
+        backgroundColor: "#0B1F17",
+        backgroundImage:
+          "repeating-linear-gradient(90deg, #0E2A1F 0, #0E2A1F 60px, #103020 60px, #103020 120px)",
+        padding: format === "story" ? "80px 60px" : "60px",
+        fontFamily: "Inter",
+        color: CHALK,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function header(initials: string, colors: { primary: string; secondary: string }, username: string) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
+      <div
+        style={{
+          width: 60,
+          height: 60,
+          borderRadius: 999,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: colors.primary,
+          color: colors.secondary,
+          fontSize: 22,
+          fontWeight: 700,
+        }}
+      >
+        {initials}
+      </div>
+      <span style={{ fontSize: 24, letterSpacing: 4, color: CHALK }}>@{username.toUpperCase()}</span>
+    </div>
+  );
+}
+
+function footer() {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        width: "100%",
+        paddingTop: 30,
+        borderTop: "2px solid rgba(245,243,236,0.14)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+        <span style={{ fontSize: 28, fontWeight: 700, letterSpacing: 2 }}>MATCHDAY</span>
+        <span style={{ fontSize: 28, fontWeight: 700, letterSpacing: 2, color: GOLD }}>XI</span>
+      </div>
+      <span style={{ fontSize: 18, letterSpacing: 2, color: MUTED }}>MATCHDAY-XI.APP</span>
+    </div>
+  );
+}
+
+function pitchDiagram({
+  layout,
+  renderDot,
+}: {
+  layout: { slotIndex: number; top: string; left: string }[];
+  renderDot: (slotIndex: number) => React.ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        position: "relative",
+        width: "100%",
+        flex: 1,
+        marginTop: 56,
+        borderRadius: 24,
+        backgroundColor: "rgba(0,0,0,0.16)",
+        boxShadow: "inset 0 0 0 1.5px rgba(245,243,236,0.14)",
+      }}
+    >
+      {layout.map((pos) => (
+        <div
+          key={pos.slotIndex}
+          style={{
+            position: "absolute",
+            display: "flex",
+            top: pos.top,
+            left: pos.left,
+          }}
+        >
+          {renderDot(pos.slotIndex)}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+type SlotMap = Map<number, PredictionWithRelations["slots"][number]>;
+
+function resultCard({
+  prediction,
+  colors,
+  layout,
+  slotByIndex,
+  format,
+}: {
+  prediction: PredictionWithRelations;
+  colors: { primary: string; secondary: string };
+  layout: { slotIndex: number; top: string; left: string }[];
+  slotByIndex: SlotMap;
+  format: "square" | "story";
+}) {
   const tier = tierFromPerfectXiCount(prediction.user.perfectXiCount);
   const tierGradient =
     tier === "gold"
@@ -49,134 +236,180 @@ export async function GET(
   const initials = (prediction.team.shortName ?? prediction.team.name).slice(0, 3).toUpperCase();
   const headline = prediction.isPerfectXi ? "PERFECT XI" : `+${prediction.pointsAwarded} PTS`;
 
-  const width = format === "story" ? 1080 : 1080;
-  const height = format === "story" ? 1920 : 1080;
+  return baseFrame(format, [
+    <div key="header" style={{ display: "flex" }}>
+      {header(initials, colors, prediction.user.username)}
+    </div>,
 
-  return new ImageResponse(
-    (
-      <div
-        style={{
-          width: "100%",
-          height: "100%",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: format === "story" ? "flex-start" : "center",
-          backgroundColor: "#0B1F17",
-          backgroundImage:
-            "repeating-linear-gradient(90deg, #0E2A1F 0, #0E2A1F 60px, #103020 60px, #103020 120px)",
-          padding: format === "story" ? "80px 60px" : "60px",
-          fontFamily: "sans-serif",
-          color: "#F5F3EC",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-          <div
-            style={{
-              width: 60,
-              height: 60,
-              borderRadius: 999,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: colors.primary,
-              color: colors.secondary,
-              fontSize: 22,
-              fontWeight: 700,
-            }}
-          >
-            {initials}
-          </div>
-          <span style={{ fontSize: 24, letterSpacing: 4, color: "#F5F3EC" }}>
-            @{prediction.user.username.toUpperCase()}
-          </span>
-        </div>
+    <div
+      key="headline"
+      style={{
+        display: "flex",
+        fontSize: format === "story" ? 96 : 108,
+        fontWeight: 700,
+        lineHeight: 0.95,
+        textTransform: "uppercase",
+        color: prediction.isPerfectXi ? GOLD : CHALK,
+        marginTop: 48,
+        textAlign: "center",
+      }}
+    >
+      {headline}
+    </div>,
 
-        <div
-          style={{
-            display: "flex",
-            fontSize: format === "story" ? 96 : 108,
-            fontWeight: 700,
-            lineHeight: 0.95,
-            textTransform: "uppercase",
-            color: prediction.isPerfectXi ? "#F0B429" : "#F5F3EC",
-            marginTop: 48,
-            textAlign: "center",
-          }}
-        >
-          {headline}
-        </div>
+    <div key="score" style={{ display: "flex", fontSize: 26, letterSpacing: 3, color: CHALK, marginTop: 24 }}>
+      {scoreLabel.toUpperCase()}
+    </div>,
 
-        <div style={{ display: "flex", fontSize: 26, letterSpacing: 3, color: "#F5F3EC", marginTop: 24 }}>
-          {scoreLabel.toUpperCase()}
-        </div>
+    <div key="tier" style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 40 }}>
+      <div style={{ width: 30, height: 30, borderRadius: 999, display: "flex", background: tierGradient }} />
+      <span style={{ fontSize: 22, letterSpacing: 2, color: MUTED }}>
+        {(tier ?? "no tier").toUpperCase()} · {prediction.user.perfectXiCount} PERFECT XI
+      </span>
+    </div>,
 
-        <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 40 }}>
-          <div style={{ width: 30, height: 30, borderRadius: 999, display: "flex", background: tierGradient }} />
-          <span style={{ fontSize: 22, letterSpacing: 2, color: "#8A9A90" }}>
-            {(tier ?? "no tier").toUpperCase()} · {prediction.user.perfectXiCount} PERFECT XI
-          </span>
-        </div>
+    <div key="diagram" style={{ display: "flex", width: "100%", flex: format === "story" ? 1 : 0 }}>
+      {format === "story" &&
+        pitchDiagram({
+          layout,
+          renderDot: (slotIndex) => {
+            const correct = slotByIndex.get(slotIndex)?.isCorrect === true;
+            return (
+              <div
+                style={{
+                  width: 34,
+                  height: 34,
+                  marginLeft: -17,
+                  marginTop: -17,
+                  borderRadius: 999,
+                  backgroundColor: correct ? GOLD : "rgba(245,243,236,0.18)",
+                }}
+              />
+            );
+          },
+        })}
+    </div>,
 
-        {format === "story" && (
-          <div
-            style={{
-              display: "flex",
-              position: "relative",
-              width: "100%",
-              flex: 1,
-              marginTop: 56,
-              borderRadius: 24,
-              backgroundColor: "rgba(0,0,0,0.16)",
-              boxShadow: "inset 0 0 0 1.5px rgba(245,243,236,0.14)",
-            }}
-          >
-            {(FORMATION_LAYOUTS[(prediction.formation as Formation) ?? "4-4-2"] ?? FORMATION_LAYOUTS["4-4-2"]).map(
-              (pos) => {
-                const slot = prediction.slots.find((s) => s.slotIndex === pos.slotIndex);
-                const correct = slot?.isCorrect === true;
-                return (
-                  <div
-                    key={pos.slotIndex}
-                    style={{
-                      position: "absolute",
-                      display: "flex",
-                      top: pos.top,
-                      left: pos.left,
-                      width: 34,
-                      height: 34,
-                      marginLeft: -17,
-                      marginTop: -17,
-                      borderRadius: 999,
-                      backgroundColor: correct ? "#F0B429" : "rgba(245,243,236,0.18)",
-                    }}
-                  />
-                );
-              },
-            )}
-          </div>
-        )}
+    <div key="spacer" style={{ display: "flex", flex: format === "story" ? 0 : 1 }} />,
 
-        <div style={{ display: "flex", flex: format === "story" ? 0 : 1 }} />
+    <div key="footer" style={{ display: "flex", width: "100%" }}>
+      {footer()}
+    </div>,
+  ]);
+}
 
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            width: "100%",
-            paddingTop: 30,
-            borderTop: "2px solid rgba(245,243,236,0.14)",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-            <span style={{ fontSize: 28, fontWeight: 700, letterSpacing: 2 }}>MATCHDAY</span>
-            <span style={{ fontSize: 28, fontWeight: 700, letterSpacing: 2, color: "#F0B429" }}>XI</span>
-          </div>
-          <span style={{ fontSize: 18, letterSpacing: 2, color: "#8A9A90" }}>MATCHDAY-XI.APP</span>
-        </div>
-      </div>
-    ),
-    { width, height },
-  );
+function predictedLineupCard({
+  prediction,
+  colors,
+  layout,
+  slotByIndex,
+  format,
+}: {
+  prediction: PredictionWithRelations;
+  colors: { primary: string; secondary: string };
+  layout: { slotIndex: number; top: string; left: string }[];
+  slotByIndex: SlotMap;
+  format: "square" | "story";
+}) {
+  const isHome = prediction.fixture.homeTeamId === prediction.teamId;
+  const opponent = isHome ? prediction.fixture.awayTeam : prediction.fixture.homeTeam;
+  const matchLabel = `${isHome ? "VS" : "@"} ${(opponent.shortName ?? opponent.name).toUpperCase()}`;
+  const kickoffLabel = prediction.fixture.kickoffAt
+    .toLocaleString("en-GB", {
+      timeZone: "UTC",
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    })
+    .toUpperCase();
+  const initials = (prediction.team.shortName ?? prediction.team.name).slice(0, 3).toUpperCase();
+
+  return baseFrame(format, [
+    <div key="header" style={{ display: "flex" }}>
+      {header(initials, colors, prediction.user.username)}
+    </div>,
+
+    <div
+      key="headline"
+      style={{
+        display: "flex",
+        fontSize: 56,
+        fontWeight: 700,
+        lineHeight: 1,
+        textTransform: "uppercase",
+        color: GOLD,
+        marginTop: 44,
+        textAlign: "center",
+      }}
+    >
+      My Predicted XI
+    </div>,
+
+    <div key="match" style={{ display: "flex", fontSize: 30, fontWeight: 700, letterSpacing: 2, color: CHALK, marginTop: 20 }}>
+      {matchLabel}
+    </div>,
+    <div key="kickoff" style={{ display: "flex", fontSize: 20, letterSpacing: 3, color: MUTED, marginTop: 8 }}>
+      KICKOFF {kickoffLabel} GMT · {prediction.formation}
+    </div>,
+
+    <div key="diagram" style={{ display: "flex", width: "100%", flex: format === "story" ? 1 : 0 }}>
+      {format === "story" &&
+        pitchDiagram({
+          layout,
+          renderDot: (slotIndex) => {
+            const player = slotByIndex.get(slotIndex)?.squadPlayer;
+            return (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  marginLeft: -50,
+                  marginTop: -34,
+                  width: 100,
+                }}
+              >
+                <div
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 999,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: colors.primary,
+                    color: colors.secondary,
+                    fontSize: 15,
+                    fontWeight: 700,
+                  }}
+                >
+                  {player?.shirtNumber ?? ""}
+                </div>
+                <span
+                  style={{
+                    display: "flex",
+                    marginTop: 6,
+                    fontSize: 15,
+                    fontWeight: 600,
+                    color: CHALK,
+                    textAlign: "center",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {player ? player.name.split(" ").slice(-1)[0].toUpperCase() : ""}
+                </span>
+              </div>
+            );
+          },
+        })}
+    </div>,
+
+    <div key="spacer" style={{ display: "flex", flex: format === "story" ? 0 : 1 }} />,
+
+    <div key="footer" style={{ display: "flex", width: "100%" }}>
+      {footer()}
+    </div>,
+  ]);
 }

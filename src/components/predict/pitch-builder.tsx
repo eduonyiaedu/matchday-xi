@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -300,7 +301,7 @@ export function PitchBuilder({
     <div className="flex flex-col gap-4 md:flex-row md:items-start md:gap-6">
       <div className="flex flex-1 flex-col gap-4">
         {scored && pointsAwarded !== null && (
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <div className="text-center">
               <p className="font-heading text-4xl font-semibold text-gold">+{pointsAwarded}</p>
               <p className="font-mono text-[9px] tracking-[0.14em] text-muted-foreground uppercase">Points</p>
@@ -308,6 +309,13 @@ export function PitchBuilder({
             {isPerfectXi && (
               <Button variant="outline" size="sm" onClick={() => setTakeoverOpen(true)}>
                 See the Perfect XI moment
+              </Button>
+            )}
+            {predictionId && (
+              <Button variant="outline" size="sm" asChild>
+                <Link href={`/api/share/${predictionId}?format=square`} target="_blank">
+                  Share your lineup
+                </Link>
               </Button>
             )}
           </div>
@@ -428,7 +436,16 @@ export function PitchBuilder({
               You didn&apos;t submit a prediction before this fixture locked.
             </p>
           ) : !scored ? (
-            <p className="text-center text-sm text-muted-foreground">Locked — this prediction is final.</p>
+            <div className="flex flex-col items-center gap-2.5">
+              <p className="text-center text-sm text-muted-foreground">Locked — this prediction is final.</p>
+              {predictionId && (
+                <Button variant="outline" size="sm" asChild>
+                  <Link href={`/api/share/${predictionId}?format=square`} target="_blank">
+                    Share your predicted XI
+                  </Link>
+                </Button>
+              )}
+            </div>
           ) : null
         ) : (
           <div className="md:hidden">{saveButton}</div>
