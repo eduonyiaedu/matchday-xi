@@ -11,12 +11,18 @@ let fontsPromise: Promise<{ name: string; data: ArrayBuffer; weight: 400 | 700; 
 
 export function loadOgFonts() {
   if (!fontsPromise) {
-    fontsPromise = Promise.all([loadGoogleFont("Inter", 400), loadGoogleFont("Inter", 700)]).then(
-      ([regular, bold]) => [
+    fontsPromise = Promise.all([loadGoogleFont("Inter", 400), loadGoogleFont("Inter", 700)])
+      .then(([regular, bold]) => [
         { name: "Inter", data: regular, weight: 400 as const, style: "normal" as const },
         { name: "Inter", data: bold, weight: 700 as const, style: "normal" as const },
-      ],
-    );
+      ])
+      .catch((error) => {
+        // Don't let one transient fetch failure (a Google Fonts blip, a network timeout) cache a
+        // rejected promise forever — a rejection is still "truthy", so without this the whole
+        // server instance would be permanently unable to render any OG image until restarted.
+        fontsPromise = null;
+        throw error;
+      });
   }
   return fontsPromise;
 }

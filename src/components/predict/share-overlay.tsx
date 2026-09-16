@@ -58,18 +58,6 @@ export function ShareOverlay({ predictionId, onClose }: { predictionId: string; 
     typeof navigator.share === "function" &&
     typeof navigator.canShare === "function";
 
-  async function handleShare() {
-    if (!blob) return;
-    const file = new File([blob], "matchday-xi.png", { type: "image/png" });
-    if (canNativeShare && navigator.canShare({ files: [file] })) {
-      try {
-        await navigator.share({ files: [file], title: "Matchday XI" });
-      } catch {
-        // User cancelled the share sheet — not an error.
-      }
-    }
-  }
-
   function handleSave() {
     if (!imgUrl) return;
     const a = document.createElement("a");
@@ -78,6 +66,23 @@ export function ShareOverlay({ predictionId, onClose }: { predictionId: string; 
     document.body.appendChild(a);
     a.click();
     a.remove();
+  }
+
+  async function handleShare() {
+    if (!blob) return;
+    const file = new File([blob], "matchday-xi.png", { type: "image/png" });
+    if (!canNativeShare || !navigator.canShare({ files: [file] })) {
+      // The device exposes navigator.share but this browser can't share files through it (or
+      // navigator.share is missing entirely) — fall back to a direct download instead of a
+      // "Share" button that silently does nothing when tapped.
+      handleSave();
+      return;
+    }
+    try {
+      await navigator.share({ files: [file], title: "Matchday XI" });
+    } catch {
+      // User cancelled the share sheet — not an error.
+    }
   }
 
   return (

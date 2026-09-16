@@ -58,7 +58,9 @@ export function PerfectXiTakeover({
   onClose: () => void;
 }) {
   const tier = tierFromPerfectXiCount(perfectXiCount);
-  const nextTier = perfectXiCount < 5 ? "Silver" : perfectXiCount < 10 ? "Gold" : null;
+  const nextTierThreshold = perfectXiCount < 5 ? 5 : perfectXiCount < 10 ? 10 : null;
+  const nextTier = nextTierThreshold === 5 ? "Silver" : nextTierThreshold === 10 ? "Gold" : null;
+  const untilNextTier = nextTierThreshold !== null ? nextTierThreshold - perfectXiCount : null;
   const [shareOpen, setShareOpen] = useState(false);
 
   // Stamped once, at the moment the celebration opens, so a re-render doesn't tick it over.
@@ -148,7 +150,12 @@ export function PerfectXiTakeover({
             <TierDisc tier={tier} size={17} />
             <span className="text-xs text-muted-foreground">
               {perfectXiCount === 1 ? "Your first Perfect XI" : `${perfectXiCount}${ordinal(perfectXiCount)} Perfect XI`}
-              {nextTier && <span className="text-chalk"> — one more for {nextTier}</span>}
+              {nextTier && untilNextTier !== null && (
+                <span className="text-chalk">
+                  {" "}
+                  — {untilNextTier === 1 ? "one more" : `${untilNextTier} more`} for {nextTier}
+                </span>
+              )}
             </span>
           </div>
           <Button size="lg" onClick={() => setShareOpen(true)}>

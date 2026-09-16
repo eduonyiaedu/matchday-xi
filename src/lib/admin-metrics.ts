@@ -50,6 +50,10 @@ function addDays(d: Date, days: number): Date {
   return new Date(d.getTime() + days * 24 * 60 * 60 * 1000);
 }
 
+function truncateToDateUtc(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+}
+
 function weekLabel(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
@@ -232,8 +236,13 @@ async function retentionSection(range: DateRange): Promise<MetricSection> {
   function retainedAt(user: { id: string; createdAt: Date }, dayOffset: number, windowDays: number): boolean {
     const logins = loginsByUser.get(user.id);
     if (!logins) return false;
-    const windowStart = addDays(user.createdAt, dayOffset - windowDays);
-    const windowEnd = addDays(user.createdAt, dayOffset + windowDays);
+    // DailyLoginLog.loginDate is stored as a @db.Date (midnight UTC), so the window must be
+    // anchored to the signup's calendar date rather than its exact timestamp — comparing against
+    // the raw createdAt instant made a 0-day window (D1) match nothing but a signup that happened
+    // to land exactly at midnight.
+    const signupDate = truncateToDateUtc(user.createdAt);
+    const windowStart = addDays(signupDate, dayOffset - windowDays);
+    const windowEnd = addDays(signupDate, dayOffset + windowDays);
     return logins.some((d) => d >= windowStart && d <= windowEnd);
   }
 

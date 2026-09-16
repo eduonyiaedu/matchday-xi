@@ -32,6 +32,14 @@ function randomSuffix(): string {
  * primary key. `cache()` only dedupes within a single request, so the upsert itself still
  * falls back to a plain read on a unique-constraint conflict as a defensive safety net for the
  * rarer cross-request race (e.g. two tabs opened in the same instant right after sign-up).
+ *
+ * Returns null — same as "not signed in" — for a Supabase session that has no app-level User
+ * row AND no consent metadata. That's a brand-new account from clicking "Continue with Google"
+ * on the *login* page (see auth/callback/route.ts), normally caught immediately by a redirect
+ * to /auth/consent; this is the backstop for a user who closes the tab, hits back, or otherwise
+ * reaches a protected page/API directly before finishing that interstitial. Every caller already
+ * treats a null user as "not authenticated" (pages redirect to /login, API routes 401), so this
+ * refusal to auto-create closes the bypass everywhere without needing per-caller changes.
  */
 export const getOrCreateCurrentUser = cache(async () => {
   const supabase = await createClient();
@@ -40,11 +48,16 @@ export const getOrCreateCurrentUser = cache(async () => {
   } = await supabase.auth.getUser();
   if (!authUser) return null;
 
+  const existingUser = await prisma.user.findUnique({ where: { id: authUser.id } });
+  if (existingUser) return existingUser;
+
   // Signup consent timestamps + username (see AuthForm) ride along as Supabase user_metadata —
   // set directly in options.data for password/magic-link signup, or via updateUser() in the
   // OAuth callback route for Google signup — and land here only once, at profile-row creation.
   const ageConfirmedAt = authUser.user_metadata?.ageConfirmedAt as string | undefined;
   const tosConsentedAt = authUser.user_metadata?.tosConsentedAt as string | undefined;
+  if (!ageConfirmedAt || !tosConsentedAt) return null;
+
   const requestedUsername = authUser.user_metadata?.username as string | undefined;
   const fallbackBase = sanitizeUsernameBase(authUser.email?.split("@")[0] ?? "player");
   const displayName =
@@ -53,10 +66,8 @@ export const getOrCreateCurrentUser = cache(async () => {
     "Player";
 
   try {
-    return await prisma.user.upsert({
-      where: { id: authUser.id },
-      update: {},
-      create: {
+    return await prisma.user.create({
+      data: {
         id: authUser.id,
         email: authUser.email ?? "",
         // Falls back to a derived username (never blocks account creation) for edge cases the
@@ -64,8 +75,8 @@ export const getOrCreateCurrentUser = cache(async () => {
         // "Continue with Google" from the login page rather than signup.
         username: requestedUsername ?? `${fallbackBase}${randomSuffix()}`,
         displayName,
-        ageConfirmedAt: ageConfirmedAt ? new Date(ageConfirmedAt) : null,
-        tosConsentedAt: tosConsentedAt ? new Date(tosConsentedAt) : null,
+        ageConfirmedAt: new Date(ageConfirmedAt),
+        tosConsentedAt: new Date(tosConsentedAt),
       },
     });
   } catch (error) {
@@ -86,8 +97,8 @@ export const getOrCreateCurrentUser = cache(async () => {
           email: authUser.email ?? "",
           username: `${fallbackBase}${randomSuffix()}`,
           displayName,
-          ageConfirmedAt: ageConfirmedAt ? new Date(ageConfirmedAt) : null,
-          tosConsentedAt: tosConsentedAt ? new Date(tosConsentedAt) : null,
+          ageConfirmedAt: new Date(ageConfirmedAt),
+          tosConsentedAt: new Date(tosConsentedAt),
         },
       });
     }

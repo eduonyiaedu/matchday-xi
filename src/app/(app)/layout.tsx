@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getOrCreateCurrentUser } from "@/lib/auth";
+import { createClient } from "@/lib/supabase/server";
 import { recordDailyLoginIfNeeded } from "@/lib/streaks";
 import { recordSessionActivity } from "@/lib/session-tracking";
 import { prisma } from "@/lib/prisma";
@@ -9,7 +10,18 @@ import { Footer } from "@/components/layout/footer";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getOrCreateCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) {
+    // getOrCreateCurrentUser returns null both for "no Supabase session" and for "authenticated
+    // but never finished the Google-login consent interstitial" (see its own comment). Only the
+    // first case is a real logged-out visitor — the second still has a live Supabase session, so
+    // send them to finish consent instead of dumping them back on the login form.
+    const supabase = await createClient();
+    const {
+      data: { user: authUser },
+    } = await supabase.auth.getUser();
+    if (authUser) redirect("/auth/consent");
+    redirect("/login");
+  }
   if (!user.favoriteTeamId) redirect("/onboarding/select-team");
 
   await recordDailyLoginIfNeeded(user);
