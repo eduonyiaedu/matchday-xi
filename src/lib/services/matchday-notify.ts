@@ -4,8 +4,10 @@ import { scopeKeyFor } from "@/lib/prediction-scope";
 import type { Fixture, Team } from "@/generated/prisma/client";
 
 /**
- * The 11am UTC "it's matchday" morning nudge (rulebook §5) — a once-daily job, entirely separate
- * from notify-sweep's 5-minute cadence, so it needs its own cron-job.org schedule entry hitting
+ * The 11am UTC "it's matchday" push (rulebook §5) — one of two messages depending on whether the
+ * recipient has already submitted a prediction for today's fixture: a nudge to pick one, or a
+ * "good luck" for the XI they already picked. A once-daily job, entirely separate from
+ * notify-sweep's 5-minute cadence, so it needs its own cron-job.org schedule entry hitting
  * /api/cron/matchday-notify at "0 11 * * *" (see that route's comment).
  */
 export async function matchdayNotifySweep() {
@@ -48,11 +50,18 @@ export async function matchdayNotifySweep() {
         select: { userId: true },
       });
       const predictedSet = new Set(alreadyPredicted.map((p) => p.userId));
-      const toNotify = favoriteUsers.map((u) => u.id).filter((id) => !predictedSet.has(id));
+      const allIds = favoriteUsers.map((u) => u.id);
+      const notPredicted = allIds.filter((id) => !predictedSet.has(id));
+      const predicted = allIds.filter((id) => predictedSet.has(id));
 
-      await sendPushToUsers(toNotify, {
+      await sendPushToUsers(notPredicted, {
         title: "It's Matchday!",
         body: `It's Matchday today! Have you picked your Matchday XI? (${fixtureLabel})`,
+        url: `/predict/${fixture.id}`,
+      });
+      await sendPushToUsers(predicted, {
+        title: "It's Matchday!",
+        body: `It's Matchday today! Good luck with your selected Matchday XI! (${fixtureLabel})`,
         url: `/predict/${fixture.id}`,
       });
     }
@@ -87,12 +96,18 @@ export async function matchdayNotifySweep() {
         select: { userId: true },
       });
       const predictedSet = new Set(alreadyPredicted.map((p) => p.userId));
-      const toNotify = userIds.filter((id) => !predictedSet.has(id));
+      const notPredicted = userIds.filter((id) => !predictedSet.has(id));
+      const predicted = userIds.filter((id) => predictedSet.has(id));
 
       const leagueName = leagueMemberships[0].league.name;
-      await sendPushToUsers(toNotify, {
+      await sendPushToUsers(notPredicted, {
         title: "It's Matchday!",
         body: `${leagueName}: It's Matchday today! Have you picked your Matchday XI? (${fixtureLabel})`,
+        url: `/leagues/${leagueId}/predict/${fixture.id}`,
+      });
+      await sendPushToUsers(predicted, {
+        title: "It's Matchday!",
+        body: `${leagueName}: It's Matchday today! Good luck with your selected Matchday XI! (${fixtureLabel})`,
         url: `/leagues/${leagueId}/predict/${fixture.id}`,
       });
       await prisma.privateLeagueMatchdayNotification.create({ data: { fixtureId: fixture.id, leagueId } });
