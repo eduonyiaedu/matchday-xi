@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
   }
 
   const team = await prisma.team.findUnique({ where: { id: parsed.data.teamId } });
-  if (!team?.isPremierLeagueClub) {
+  if (!team?.isPremierLeagueClub || !team.isActive) {
     return NextResponse.json({ error: "Pick one of the 20 Premier League clubs" }, { status: 400 });
   }
 

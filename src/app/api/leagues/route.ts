@@ -5,6 +5,8 @@ import { createPrivateLeagueSchema } from "@/lib/validation";
 
 export const runtime = "nodejs";
 
+class OneLeaguePerCreatorError extends Error {}
+
 function slugify(name: string): string {
   return (
     name
@@ -35,10 +37,6 @@ export async function POST(request: NextRequest) {
   // TODO: gate behind a subscription tier once paid tiers exist (rulebook §12b ties creation to
   // "subscribed users"; there is no subscription tier at all in this free-tier-only MVP, so
   // creation is open to any logged-in user for now, per founder decision).
-  const existingOwned = await prisma.privateLeague.count({ where: { creatorId: user.id } });
-  if (existingOwned > 0) {
-    return NextResponse.json({ error: "You can only create one private league" }, { status: 403 });
-  }
 
   const parsed = createPrivateLeagueSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
@@ -64,30 +62,50 @@ export async function POST(request: NextRequest) {
   // The creator's team choice becomes their own membership row, approved immediately — this is
   // what makes the creator able to build a lineup right away, instead of relying on a page-level
   // bypass with nothing backing it at the API layer (the exact bug this fixes).
-  const league = await prisma.$transaction(async (tx) => {
-    const created = await tx.privateLeague.create({
-      data: {
-        creatorId: user.id,
-        name: data.name,
-        slug: slugify(data.name),
-        teamRule: data.teamRule,
-        restrictedTeamId: data.teamRule === "SINGLE_TEAM" ? data.restrictedTeamId : undefined,
-        startDate: data.startDate,
-        endDate: data.endDate,
-        // isPaid/entryFee intentionally omitted — always default to free (false/null) in this build.
-      },
-    });
-    await tx.privateLeagueMembership.create({
-      data: {
-        leagueId: created.id,
-        userId: user.id,
-        teamId: data.teamId,
-        status: "APPROVED",
-        respondedAt: new Date(),
-      },
-    });
-    return created;
-  });
+  //
+  // The "one league per creator" check and the create used to be two separate round-trips, which
+  // let two concurrent POSTs (a double-click, or a client retry) both read zero existing leagues
+  // and both create one. An advisory lock keyed on the creator's id makes the check-then-create
+  // exclusive per user: the second call blocks until the first transaction commits, then correctly
+  // sees the just-created league and is rejected.
+  try {
+    const league = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"private-league-create:" + user.id}))`;
 
-  return NextResponse.json({ league }, { status: 201 });
+      const existingOwned = await tx.privateLeague.count({ where: { creatorId: user.id } });
+      if (existingOwned > 0) {
+        throw new OneLeaguePerCreatorError();
+      }
+
+      const created = await tx.privateLeague.create({
+        data: {
+          creatorId: user.id,
+          name: data.name,
+          slug: slugify(data.name),
+          teamRule: data.teamRule,
+          restrictedTeamId: data.teamRule === "SINGLE_TEAM" ? data.restrictedTeamId : undefined,
+          startDate: data.startDate,
+          endDate: data.endDate,
+          // isPaid/entryFee intentionally omitted — always default to free (false/null) in this build.
+        },
+      });
+      await tx.privateLeagueMembership.create({
+        data: {
+          leagueId: created.id,
+          userId: user.id,
+          teamId: data.teamId,
+          status: "APPROVED",
+          respondedAt: new Date(),
+        },
+      });
+      return created;
+    });
+
+    return NextResponse.json({ league }, { status: 201 });
+  } catch (error) {
+    if (error instanceof OneLeaguePerCreatorError) {
+      return NextResponse.json({ error: "You can only create one private league" }, { status: 403 });
+    }
+    throw error;
+  }
 }

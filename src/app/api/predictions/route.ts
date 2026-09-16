@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
   }
 
   const team = await prisma.team.findUnique({ where: { id: teamId } });
-  if (!team?.isPremierLeagueClub) {
+  if (!team?.isPremierLeagueClub || !team.isActive) {
     return NextResponse.json({ error: "Predictions can only be made for a Premier League club" }, { status: 400 });
   }
 
@@ -139,18 +139,15 @@ export async function POST(request: NextRequest) {
 
   const scopeKey = scopeKeyFor(privateLeagueId);
   const prediction = await prisma.$transaction(async (tx) => {
-    const existing = await tx.prediction.findUnique({
+    // A real `upsert` (single atomic ON CONFLICT, not a find-then-branch) — two concurrent submits
+    // of a user's first-ever prediction for this fixture (a double-tap, or a client retry) both
+    // read no existing row under the old find-then-create/update, so the loser's create() threw an
+    // uncaught unique-constraint error instead of the same idempotent success the winner got.
+    const upserted = await tx.prediction.upsert({
       where: { userId_fixtureId_scopeKey: { userId: user.id, fixtureId, scopeKey } },
+      update: { teamId, formation, updatedAt: new Date() },
+      create: { userId: user.id, fixtureId, teamId, formation, privateLeagueId, scopeKey },
     });
-
-    const upserted = existing
-      ? await tx.prediction.update({
-          where: { id: existing.id },
-          data: { teamId, formation, updatedAt: new Date() },
-        })
-      : await tx.prediction.create({
-          data: { userId: user.id, fixtureId, teamId, formation, privateLeagueId, scopeKey },
-        });
 
     await tx.predictionSlot.deleteMany({ where: { predictionId: upserted.id } });
     await tx.predictionSlot.createMany({
