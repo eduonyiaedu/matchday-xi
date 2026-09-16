@@ -2,7 +2,6 @@
 
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,6 +17,7 @@ import {
 } from "@/components/ui/bottom-sheet";
 import { Jersey } from "@/components/predict/jersey";
 import { PerfectXiTakeover } from "@/components/predict/perfect-xi-takeover";
+import { ShareOverlay } from "@/components/predict/share-overlay";
 import { cn } from "@/lib/utils";
 import { FORMATIONS, FORMATION_LAYOUTS, type Formation } from "@/lib/formations";
 
@@ -105,6 +105,7 @@ export function PitchBuilder({
   const router = useRouter();
   const [formation, setFormation] = useState<Formation>(initialFormation);
   const [takeoverOpen, setTakeoverOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [slots, setSlots] = useState<Record<number, string | null>>(() => {
     const initial: Record<number, string | null> = {};
     for (let i = 0; i <= 10; i++) initial[i] = null;
@@ -319,10 +320,8 @@ export function PitchBuilder({
               </Button>
             )}
             {predictionId && (
-              <Button variant="outline" size="sm" asChild>
-                <Link href={`/api/share/${predictionId}?format=square`} target="_blank">
-                  Share your lineup
-                </Link>
+              <Button variant="outline" size="sm" onClick={() => setShareOpen(true)}>
+                Share your lineup
               </Button>
             )}
           </div>
@@ -450,10 +449,8 @@ export function PitchBuilder({
             <div className="flex flex-col items-center gap-2.5">
               <p className="text-center text-sm text-muted-foreground">Locked — this prediction is final.</p>
               {predictionId && (
-                <Button variant="outline" size="sm" asChild>
-                  <Link href={`/api/share/${predictionId}?format=square`} target="_blank">
-                    Share your predicted XI
-                  </Link>
+                <Button variant="outline" size="sm" onClick={() => setShareOpen(true)}>
+                  Share your predicted XI
                 </Button>
               )}
             </div>
@@ -540,6 +537,8 @@ export function PitchBuilder({
           onClose={() => setTakeoverOpen(false)}
         />
       )}
+
+      {shareOpen && predictionId && <ShareOverlay predictionId={predictionId} onClose={() => setShareOpen(false)} />}
     </div>
   );
 }

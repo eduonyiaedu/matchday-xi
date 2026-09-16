@@ -110,6 +110,7 @@ model User {
   createdLeagues       PrivateLeague[]           @relation("LeagueCreator")
   leagueMemberships    PrivateLeagueMembership[]
   pushSubscriptions    PushSubscription[]
+  sessionLogs          SessionLog[]
 
   @@index([favoriteTeamId])
   @@index([totalPoints])
@@ -410,6 +411,24 @@ model PushSubscription {
   createdAt DateTime @default(now())
 
   @@index([userId])
+}
+
+/// Lightweight first-party session tracker for the investor-metrics dashboard (admin-only) — a
+/// "session" is one row, extended (lastSeenAt bumped) while the user keeps browsing within
+/// SESSION_GAP_MINUTES of their last recorded activity, or started fresh as a new row after a
+/// longer gap. Written from the (app) layout alongside recordDailyLoginIfNeeded, throttled the
+/// same way, so it adds at most one extra write per few minutes of active browsing per user, not
+/// one per request. Session duration = lastSeenAt - startedAt; a single-request visit has
+/// duration 0, which is accurate, not a bug.
+model SessionLog {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  startedAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  @@index([userId, lastSeenAt])
+  @@index([startedAt])
 }
 
 /// Logs every cron execution so the founder has something to check if automation seems stuck.

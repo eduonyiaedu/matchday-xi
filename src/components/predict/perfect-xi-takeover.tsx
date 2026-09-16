@@ -1,8 +1,9 @@
 "use client";
 
-import Link from "next/link";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { TierDisc, tierFromPerfectXiCount } from "@/components/leaderboard/tier-disc";
+import { ShareOverlay } from "@/components/predict/share-overlay";
 
 interface TakeoverRow {
   pos: string;
@@ -48,6 +49,7 @@ export function PerfectXiTakeover({
 }) {
   const tier = tierFromPerfectXiCount(perfectXiCount);
   const nextTier = perfectXiCount < 5 ? "Silver" : perfectXiCount < 10 ? "Gold" : null;
+  const [shareOpen, setShareOpen] = useState(false);
 
   return (
     <div className="fixed inset-0 z-[70] overflow-hidden bg-pitch">
@@ -131,16 +133,16 @@ export function PerfectXiTakeover({
               {nextTier && <span className="text-chalk"> — one more for {nextTier}</span>}
             </span>
           </div>
-          <Button size="lg" asChild>
-            <Link href={`/api/share/${predictionId}?format=square`} target="_blank">
-              Share this team sheet
-            </Link>
+          <Button size="lg" onClick={() => setShareOpen(true)}>
+            Share this team sheet
           </Button>
           <button type="button" onClick={onClose} className="py-1.5 text-center text-sm text-muted-foreground">
             Back to matchday
           </button>
         </div>
       </div>
+
+      {shareOpen && <ShareOverlay predictionId={predictionId} onClose={() => setShareOpen(false)} />}
     </div>
   );
 }

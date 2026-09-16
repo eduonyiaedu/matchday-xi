@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getOrCreateCurrentUser } from "@/lib/auth";
 import { recordDailyLoginIfNeeded } from "@/lib/streaks";
+import { recordSessionActivity } from "@/lib/session-tracking";
 import { prisma } from "@/lib/prisma";
 import { getTeamColors } from "@/lib/team-colors";
 import { AppNav } from "@/components/layout/app-nav";
@@ -12,6 +13,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!user.favoriteTeamId) redirect("/onboarding/select-team");
 
   await recordDailyLoginIfNeeded(user);
+  await recordSessionActivity(user.id);
 
   // Global --club accent (nav highlight, focus rings via --ring, avatar, pinned leaderboard
   // row) is always the VIEWER's own favorite team — never the team a specific prediction is

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getTeamColors } from "@/lib/team-colors";
 import { tierFromPerfectXiCount } from "@/components/leaderboard/tier-disc";
 import { FORMATION_LAYOUTS, type Formation } from "@/lib/formations";
+import { loadOgFonts } from "@/lib/og-fonts";
 
 export const runtime = "nodejs";
 
@@ -57,7 +58,7 @@ export async function GET(
   const slotByIndex = new Map(prediction.slots.map((s) => [s.slotIndex, s]));
 
   const scored = prediction.pointsAwarded !== null;
-  const fonts = await loadFonts();
+  const fonts = await loadOgFonts();
 
   return new ImageResponse(
     scored
@@ -65,38 +66,6 @@ export async function GET(
       : predictedLineupCard({ prediction, colors, layout, slotByIndex, format }),
     { width, height, fonts },
   );
-}
-
-// next/og's ImageResponse (satori) has no built-in fallback font on the Node runtime — without an
-// explicit `fonts` array it has no metrics to lay text out with at all, which doesn't error, it
-// just collapses every text box to ~zero height and stacks them on top of each other. Fetched once
-// per server instance and reused (module-level cache), same technique satori's own docs recommend
-// for pulling a specific static weight from Google Fonts (the CSS endpoint serves woff2 to a
-// modern UA, but satori needs ttf/otf — spoofing an old UA gets the ttf link instead).
-let fontsPromise: Promise<{ name: string; data: ArrayBuffer; weight: 400 | 700; style: "normal" }[]> | null = null;
-function loadFonts() {
-  if (!fontsPromise) {
-    fontsPromise = Promise.all([loadGoogleFont("Inter", 400), loadGoogleFont("Inter", 700)]).then(
-      ([regular, bold]) => [
-        { name: "Inter", data: regular, weight: 400 as const, style: "normal" as const },
-        { name: "Inter", data: bold, weight: 700 as const, style: "normal" as const },
-      ],
-    );
-  }
-  return fontsPromise;
-}
-
-async function loadGoogleFont(family: string, weight: number): Promise<ArrayBuffer> {
-  const css = await fetch(`https://fonts.googleapis.com/css2?family=${family}:wght@${weight}`, {
-    headers: {
-      // A legacy UA gets a ttf/otf @font-face src back instead of woff2 — satori can't parse woff2.
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/534.34 (KHTML, like Gecko) Chrome/9.0.601.0 Safari/534.34",
-    },
-  }).then((r) => r.text());
-  const match = css.match(/src: url\(([^)]+)\)/);
-  if (!match) throw new Error(`Could not resolve a font URL for ${family} ${weight}`);
-  return fetch(match[1]).then((r) => r.arrayBuffer());
 }
 
 // `children` must be a real array of siblings, not a `<>...</>` Fragment — satori doesn't flatten
@@ -209,6 +178,29 @@ function pitchDiagram({
 
 type SlotMap = Map<number, PredictionWithRelations["slots"][number]>;
 
+/**
+ * The square format has no room for the full pitch diagram, so the XI is shown as a compact
+ * text list instead of being dropped entirely — "displayed" (the diagram) for the tall story
+ * format, "listed" (this) for the square one, matching the two destinations they're meant for.
+ */
+function lineupList({
+  layout,
+  renderItem,
+}: {
+  layout: { slotIndex: number }[];
+  renderItem: (slotIndex: number) => React.ReactNode;
+}) {
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", width: "100%", gap: 16, marginTop: 40 }}>
+      {layout.map((pos) => (
+        <div key={pos.slotIndex} style={{ display: "flex", width: 290 }}>
+          {renderItem(pos.slotIndex)}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function resultCard({
   prediction,
   colors,
@@ -249,7 +241,7 @@ function resultCard({
         fontWeight: 700,
         lineHeight: 0.95,
         textTransform: "uppercase",
-        color: prediction.isPerfectXi ? GOLD : CHALK,
+        color: GOLD,
         marginTop: 48,
         textAlign: "center",
       }}
@@ -269,25 +261,56 @@ function resultCard({
     </div>,
 
     <div key="diagram" style={{ display: "flex", width: "100%", flex: format === "story" ? 1 : 0 }}>
-      {format === "story" &&
-        pitchDiagram({
-          layout,
-          renderDot: (slotIndex) => {
-            const correct = slotByIndex.get(slotIndex)?.isCorrect === true;
-            return (
-              <div
-                style={{
-                  width: 34,
-                  height: 34,
-                  marginLeft: -17,
-                  marginTop: -17,
-                  borderRadius: 999,
-                  backgroundColor: correct ? GOLD : "rgba(245,243,236,0.18)",
-                }}
-              />
-            );
-          },
-        })}
+      {format === "story"
+        ? pitchDiagram({
+            layout,
+            renderDot: (slotIndex) => {
+              const correct = slotByIndex.get(slotIndex)?.isCorrect === true;
+              return (
+                <div
+                  style={{
+                    width: 34,
+                    height: 34,
+                    marginLeft: -17,
+                    marginTop: -17,
+                    borderRadius: 999,
+                    backgroundColor: correct ? GOLD : "rgba(245,243,236,0.18)",
+                  }}
+                />
+              );
+            },
+          })
+        : lineupList({
+            layout,
+            renderItem: (slotIndex) => {
+              const slot = slotByIndex.get(slotIndex);
+              const player = slot?.squadPlayer;
+              const correct = slot?.isCorrect === true;
+              return (
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      width: 26,
+                      height: 26,
+                      borderRadius: 999,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: correct ? GOLD : "rgba(245,243,236,0.14)",
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: correct ? "#0B1F17" : MUTED,
+                    }}
+                  >
+                    {player?.shirtNumber ?? ""}
+                  </div>
+                  <span style={{ display: "flex", fontSize: 17, fontWeight: 600, color: correct ? CHALK : MUTED }}>
+                    {player ? player.name.split(" ").slice(-1)[0].toUpperCase() : ""}
+                  </span>
+                </div>
+              );
+            },
+          })}
     </div>,
 
     <div key="spacer" style={{ display: "flex", flex: format === "story" ? 0 : 1 }} />,
@@ -355,55 +378,84 @@ function predictedLineupCard({
     </div>,
 
     <div key="diagram" style={{ display: "flex", width: "100%", flex: format === "story" ? 1 : 0 }}>
-      {format === "story" &&
-        pitchDiagram({
-          layout,
-          renderDot: (slotIndex) => {
-            const player = slotByIndex.get(slotIndex)?.squadPlayer;
-            return (
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  marginLeft: -50,
-                  marginTop: -34,
-                  width: 100,
-                }}
-              >
+      {format === "story"
+        ? pitchDiagram({
+            layout,
+            renderDot: (slotIndex) => {
+              const player = slotByIndex.get(slotIndex)?.squadPlayer;
+              return (
                 <div
                   style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 999,
                     display: "flex",
+                    flexDirection: "column",
                     alignItems: "center",
-                    justifyContent: "center",
-                    backgroundColor: colors.primary,
-                    color: colors.secondary,
-                    fontSize: 15,
-                    fontWeight: 700,
+                    marginLeft: -50,
+                    marginTop: -34,
+                    width: 100,
                   }}
                 >
-                  {player?.shirtNumber ?? ""}
+                  <div
+                    style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 999,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: colors.primary,
+                      color: colors.secondary,
+                      fontSize: 15,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {player?.shirtNumber ?? ""}
+                  </div>
+                  <span
+                    style={{
+                      display: "flex",
+                      marginTop: 6,
+                      fontSize: 15,
+                      fontWeight: 600,
+                      color: CHALK,
+                      textAlign: "center",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {player ? player.name.split(" ").slice(-1)[0].toUpperCase() : ""}
+                  </span>
                 </div>
-                <span
-                  style={{
-                    display: "flex",
-                    marginTop: 6,
-                    fontSize: 15,
-                    fontWeight: 600,
-                    color: CHALK,
-                    textAlign: "center",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {player ? player.name.split(" ").slice(-1)[0].toUpperCase() : ""}
-                </span>
-              </div>
-            );
-          },
-        })}
+              );
+            },
+          })
+        : lineupList({
+            layout,
+            renderItem: (slotIndex) => {
+              const player = slotByIndex.get(slotIndex)?.squadPlayer;
+              return (
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      width: 26,
+                      height: 26,
+                      borderRadius: 999,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: colors.primary,
+                      color: colors.secondary,
+                      fontSize: 11,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {player?.shirtNumber ?? ""}
+                  </div>
+                  <span style={{ display: "flex", fontSize: 17, fontWeight: 600, color: CHALK }}>
+                    {player ? player.name.split(" ").slice(-1)[0].toUpperCase() : ""}
+                  </span>
+                </div>
+              );
+            },
+          })}
     </div>,
 
     <div key="spacer" style={{ display: "flex", flex: format === "story" ? 0 : 1 }} />,
