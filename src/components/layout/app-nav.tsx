@@ -103,7 +103,7 @@ export function AppNav({
         </div>
       </header>
 
-      {/* Mobile fixed bottom tab bar (<768px) — a 7th slot appears only for admins */}
+      {/* Mobile fixed bottom tab bar (<768px) — a 6th slot appears only for admins */}
       <nav
         className={cn(
           "fixed inset-x-0 bottom-0 z-40 grid border-t border-white/9 bg-pitch/95 px-1 pt-2.5 pb-4 md:hidden",

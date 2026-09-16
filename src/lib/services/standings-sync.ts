@@ -29,7 +29,7 @@ export async function syncStandingsAndScorers() {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"standings-sync:" + competition.id}))`;
 
       for (const row of standings) {
-        const team = await upsertOpponentTeam(row.team);
+        const team = await upsertOpponentTeam(row.team, tx);
         await tx.leagueStanding.upsert({
           where: { competitionId_teamId: { competitionId: competition.id, teamId: team.id } },
           update: {
@@ -64,7 +64,7 @@ export async function syncStandingsAndScorers() {
       // official lineups.
       await tx.topScorer.deleteMany({ where: { competitionId: competition.id } });
       for (const [index, scorer] of scorers.entries()) {
-        const team = await upsertOpponentTeam(scorer.team);
+        const team = await upsertOpponentTeam(scorer.team, tx);
         await tx.topScorer.create({
           data: {
             competitionId: competition.id,

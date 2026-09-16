@@ -112,8 +112,10 @@ async function syncPremierLeagueTeamsAndSquads() {
   return { teamsSynced: teams.length, squadsSynced: teamsDueForSquadSync.map((t) => t.name) };
 }
 
-export async function upsertOpponentTeam(team: FootballDataMatch["homeTeam"]) {
-  return prisma.team.upsert({
+type PrismaOrTx = typeof prisma | Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
+
+export async function upsertOpponentTeam(team: FootballDataMatch["homeTeam"], client: PrismaOrTx = prisma) {
+  return client.team.upsert({
     where: { externalId: team.id },
     update: { name: team.name, shortName: team.shortName ?? undefined, crestUrl: team.crest ?? undefined },
     create: {
