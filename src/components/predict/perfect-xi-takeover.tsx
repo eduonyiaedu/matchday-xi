@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import { TierDisc, tierFromPerfectXiCount } from "@/components/leaderboard/tier-disc";
 
@@ -8,6 +9,16 @@ interface TakeoverRow {
   pos: string;
   number: number | null;
   name: string;
+}
+
+const STAMP_DATE_OPTIONS: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", year: "numeric" };
+
+// Same fix as local-time.tsx: toLocaleDateString(undefined, ...) resolves the server's locale
+// during SSR and the viewer's locale on the client, so rendering it directly here would hydrate
+// mismatched. getServerSnapshot pins a UTC-formatted string for SSR/first paint; React then swaps
+// to the viewer's real locale via getSnapshot once mounted.
+function subscribe() {
+  return () => {};
 }
 
 const CONFETTI = [
@@ -48,6 +59,14 @@ export function PerfectXiTakeover({
 }) {
   const tier = tierFromPerfectXiCount(perfectXiCount);
   const nextTier = perfectXiCount < 5 ? "Silver" : perfectXiCount < 10 ? "Gold" : null;
+
+  // Stamped once, at the moment the celebration opens, so a re-render doesn't tick it over.
+  const [openedAtIso] = useState(() => new Date().toISOString());
+  const stampDate = useSyncExternalStore(
+    subscribe,
+    () => new Date(openedAtIso).toLocaleDateString(undefined, STAMP_DATE_OPTIONS).toUpperCase(),
+    () => new Date(openedAtIso).toLocaleDateString("en-GB", { ...STAMP_DATE_OPTIONS, timeZone: "UTC" }).toUpperCase(),
+  );
 
   return (
     <div className="fixed inset-0 z-[70] overflow-hidden bg-pitch">
@@ -107,7 +126,7 @@ export function PerfectXiTakeover({
             <div className="rounded-lg border-4 border-gold bg-pitch/88 p-2.5 text-center shadow-[0_0_34px_rgba(240,180,41,0.32)]">
               <p className="font-heading text-[34px] leading-none font-bold tracking-[0.04em] text-gold uppercase">Perfect XI</p>
               <p className="mt-1.5 font-mono text-[9px] tracking-[0.24em] text-chalk">
-                {new Date().toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }).toUpperCase()} · 11/11
+                {stampDate} · 11/11
               </p>
             </div>
           </div>
