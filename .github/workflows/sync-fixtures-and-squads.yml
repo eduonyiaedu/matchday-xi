@@ -25,3 +25,13 @@ jobs:
           curl --fail --show-error --silent \
             -X POST "${{ secrets.APP_BASE_URL }}/api/cron/sync-fixtures" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+
+  sync-standings:
+    needs: sync-fixtures
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call /api/cron/sync-standings
+        run: |
+          curl --fail --show-error --silent \
+            -X POST "${{ secrets.APP_BASE_URL }}/api/cron/sync-standings" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"

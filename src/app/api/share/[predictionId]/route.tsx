@@ -265,18 +265,50 @@ function resultCard({
         ? pitchDiagram({
             layout,
             renderDot: (slotIndex) => {
-              const correct = slotByIndex.get(slotIndex)?.isCorrect === true;
+              const slot = slotByIndex.get(slotIndex);
+              const player = slot?.squadPlayer;
+              const correct = slot?.isCorrect === true;
               return (
                 <div
                   style={{
-                    width: 34,
-                    height: 34,
-                    marginLeft: -17,
-                    marginTop: -17,
-                    borderRadius: 999,
-                    backgroundColor: correct ? GOLD : "rgba(245,243,236,0.18)",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    marginLeft: -50,
+                    marginTop: -34,
+                    width: 100,
                   }}
-                />
+                >
+                  <div
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: 999,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: correct ? GOLD : "rgba(245,243,236,0.18)",
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: correct ? "#0B1F17" : MUTED,
+                    }}
+                  >
+                    {player?.shirtNumber ?? ""}
+                  </div>
+                  <span
+                    style={{
+                      display: "flex",
+                      marginTop: 6,
+                      fontSize: 15,
+                      fontWeight: 600,
+                      color: correct ? CHALK : MUTED,
+                      textAlign: "center",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {player ? player.name.split(" ").slice(-1)[0].toUpperCase() : ""}
+                  </span>
+                </div>
               );
             },
           })

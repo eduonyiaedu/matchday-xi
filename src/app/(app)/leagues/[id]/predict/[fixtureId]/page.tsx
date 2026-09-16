@@ -77,7 +77,6 @@ export default async function LeaguePredictPage({
     : undefined;
 
   const team = fixture.homeTeamId === teamId ? fixture.homeTeam : fixture.awayTeam;
-  const opponent = fixture.homeTeamId === teamId ? fixture.awayTeam : fixture.homeTeam;
   const matchLabel =
     fixture.homeScore !== null && fixture.awayScore !== null
       ? `${fixture.homeTeam.shortName ?? fixture.homeTeam.name} ${fixture.homeScore}–${fixture.awayScore} ${fixture.awayTeam.shortName ?? fixture.awayTeam.name}`
@@ -88,7 +87,7 @@ export default async function LeaguePredictPage({
       <div>
         <BackLink fallbackHref={`/leagues/${leagueId}`} />
         <h1 className="text-2xl font-bold">
-          {team.name} vs {opponent.name}
+          {fixture.homeTeam.name} vs {fixture.awayTeam.name}
         </h1>
         <p className="text-sm text-muted-foreground">
           {league.name} · {fixture.competition.name} · Kickoff{" "}

@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LocalTime } from "@/components/ui/local-time";
 import { FixtureEligibilityBadge } from "@/components/predict/fixture-eligibility-badge";
+import { FixturesTabs } from "@/components/fixtures/fixtures-tabs";
 import { getNextEligibleFixture, isPredictionWindowOpen, predictionOpensAt } from "@/lib/next-fixture";
 
 export default async function FixturesPage() {
@@ -32,7 +33,8 @@ export default async function FixturesPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="font-heading text-2xl font-semibold uppercase">Upcoming fixtures</h1>
+      <h1 className="font-heading text-2xl font-semibold uppercase">Fixtures</h1>
+      <FixturesTabs active="upcoming" />
       {fixtures.length === 0 && (
         <Card>
           <CardContent className="py-7 text-center">

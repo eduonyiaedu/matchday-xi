@@ -134,16 +134,12 @@ export default async function HomePage() {
                 </div>
                 <span className="font-mono text-[11px] text-muted-foreground">{nextFixturePrediction ? "11/11" : "0/11"}</span>
               </div>
-              {nextFixtureWindowOpen ? (
+              {nextFixtureWindowOpen && (
                 <Button asChild size="lg" className="mt-3.5 w-full">
                   <Link href={`/predict/${nextFixture.id}`}>
                     {nextFixturePrediction ? "Edit your lineup" : isNewUser ? "Build your first lineup" : "Build your lineup"}
                   </Link>
                 </Button>
-              ) : (
-                <p className="mt-3.5 text-center text-xs text-muted-foreground">
-                  Predictions open <LocalTime iso={predictionOpensAt(nextFixture).toISOString()} /> — 24h before kickoff.
-                </p>
               )}
             </CardContent>
           </>

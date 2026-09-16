@@ -67,7 +67,6 @@ export default async function PredictPage({
       })) ?? []
     : undefined;
 
-  const opponent = fixture.homeTeamId === user.favoriteTeamId ? fixture.awayTeam : fixture.homeTeam;
   const isHome = fixture.homeTeamId === user.favoriteTeamId;
   const myTeam = isHome ? fixture.homeTeam : fixture.awayTeam;
   const matchLabel =
@@ -80,11 +79,10 @@ export default async function PredictPage({
       <div>
         <BackLink fallbackHref="/fixtures" />
         <h1 className="text-2xl font-bold">
-          {isHome ? "vs" : "@"} {opponent.name}
+          {fixture.homeTeam.name} vs {fixture.awayTeam.name}
         </h1>
         <p className="text-sm text-muted-foreground">
-          {fixture.competition.name} · Kickoff <LocalTime iso={fixture.kickoffAt.toISOString()} /> · Locks{" "}
-          <LocalTime iso={fixture.lockAt.toISOString()} />
+          {fixture.competition.name} · Kickoff <LocalTime iso={fixture.kickoffAt.toISOString()} />
         </p>
       </div>
       {windowNotYetOpen ? (

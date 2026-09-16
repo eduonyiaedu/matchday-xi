@@ -40,6 +40,26 @@ export interface FootballDataSquadPlayer {
   position: string | null; // e.g. "Goalkeeper", "Centre-Back", "Left Winger"
 }
 
+export interface FootballDataStandingRow {
+  position: number;
+  team: FootballDataTeam;
+  playedGames: number;
+  won: number;
+  draw: number;
+  lost: number;
+  points: number;
+  goalsFor: number;
+  goalsAgainst: number;
+  goalDifference: number;
+}
+
+export interface FootballDataScorer {
+  player: { id: number; name: string };
+  team: FootballDataTeam;
+  goals: number;
+  assists: number | null;
+}
+
 export interface FootballDataMatch {
   id: number;
   utcDate: string; // ISO 8601 kickoff time, UTC
@@ -125,6 +145,26 @@ class FootballDataClient {
       `/competitions/${competitionCode}/matches?dateFrom=${dateFrom}&dateTo=${dateTo}`,
     );
     return data.matches;
+  }
+
+  /** Current league table — free tier, confirmed working for the live current season. */
+  async getStandings(competitionCode: string): Promise<FootballDataStandingRow[]> {
+    const data = await this.request<{ standings: { type: string; table: FootballDataStandingRow[] }[] }>(
+      `/competitions/${competitionCode}/standings`,
+    );
+    return data.standings.find((s) => s.type === "TOTAL")?.table ?? [];
+  }
+
+  /**
+   * Season-long goals/assists leaderboard — free tier. No per-match goal-event breakdown exists
+   * on this tier (confirmed directly against the live API, Sep 2026): a single match's detail
+   * endpoint carries no goal events at all, only this aggregated season total per player.
+   */
+  async getScorers(competitionCode: string, limit = 20): Promise<FootballDataScorer[]> {
+    const data = await this.request<{ scorers: FootballDataScorer[] }>(
+      `/competitions/${competitionCode}/scorers?limit=${limit}`,
+    );
+    return data.scorers;
   }
 }
 

@@ -39,7 +39,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div
-      className="flex min-h-svh flex-col"
+      className="flex min-h-svh flex-col pb-24 md:pb-0"
       style={{ "--club": club.primary } as React.CSSProperties}
     >
       <AppNav
@@ -50,7 +50,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         role={user.role}
         teamInitials={teamInitials}
       />
-      <main className="mx-auto w-full max-w-5xl flex-1 p-4 pb-24 md:pb-4">{children}</main>
+      <main className="mx-auto w-full max-w-5xl flex-1 p-4">{children}</main>
       <Footer />
     </div>
   );

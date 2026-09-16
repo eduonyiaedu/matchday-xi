@@ -11,7 +11,6 @@ import { cn } from "@/lib/utils";
 const NAV_ICONS: Record<string, string> = {
   home: '<rect x="2.5" y="3" width="15" height="14" rx="1.5"></rect><line x1="2.5" y1="10" x2="17.5" y2="10"></line><circle cx="10" cy="10" r="3"></circle>',
   fixtures: '<circle cx="10" cy="10" r="7"></circle><path d="M10 5.5V10l3 1.8"></path>',
-  history: '<line x1="4" y1="5.5" x2="16" y2="5.5"></line><line x1="4" y1="10" x2="16" y2="10"></line><line x1="4" y1="14.5" x2="11" y2="14.5"></line>',
   tables: '<path d="M6 3h8v4a4 4 0 0 1-8 0V3Z"></path><path d="M6 4.5H3.5V6a2.5 2.5 0 0 0 2.5 2.5"></path><path d="M14 4.5h2.5V6A2.5 2.5 0 0 1 14 8.5"></path><line x1="10" y1="11" x2="10" y2="14.5"></line><line x1="6.5" y1="16.5" x2="13.5" y2="16.5"></line>',
   leagues: '<path d="M10 2.5 16.5 5v5.5c0 3.6-2.6 6-6.5 7-3.9-1-6.5-3.4-6.5-7V5L10 2.5Z"></path>',
   prizes: '<path d="M10 1.5C10 5 14 5.6 14 9.8c0 2-1.2 3.6-2.9 4.2.6-1.2.4-2.7-.7-3.6.2 2-1.4 2.6-2.4 3.8-.9 1-.9 2.6.1 3.8C5.6 17.2 4 15 4 12.3 4 7.8 8.5 7.2 10 1.5Z"></path>',
@@ -21,7 +20,6 @@ const NAV_ICONS: Record<string, string> = {
 const LINKS = [
   { href: "/home", icon: "home", shortLabel: "Home", label: "Home" },
   { href: "/fixtures", icon: "fixtures", shortLabel: "Fixtures", label: "Fixtures" },
-  { href: "/history", icon: "history", shortLabel: "History", label: "History" },
   { href: "/leaderboards/global", icon: "tables", shortLabel: "Tables", label: "Leaderboards" },
   { href: "/leagues", icon: "leagues", shortLabel: "Leagues", label: "Leagues" },
   { href: "/prizes", icon: "prizes", shortLabel: "Prizes", label: "Prizes" },
@@ -109,7 +107,7 @@ export function AppNav({
       <nav
         className={cn(
           "fixed inset-x-0 bottom-0 z-40 grid border-t border-white/9 bg-pitch/95 px-1 pt-2.5 pb-4 md:hidden",
-          role === "ADMIN" ? "grid-cols-7" : "grid-cols-6",
+          role === "ADMIN" ? "grid-cols-6" : "grid-cols-5",
         )}
       >
         {[...LINKS, ...(role === "ADMIN" ? [{ href: "/admin", icon: "admin", shortLabel: "Admin", label: "Admin" }] : [])].map(

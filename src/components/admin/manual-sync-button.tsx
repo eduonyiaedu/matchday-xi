@@ -37,6 +37,7 @@ export function ManualSyncButtons() {
       <SyncButton label="Sync squads" endpoint="/api/admin/sync-squads" />
       <SyncButton label="Sync fixtures" endpoint="/api/admin/sync-fixtures" />
       <SyncButton label="Sync shirt numbers / U21" endpoint="/api/admin/sync-shirt-numbers" />
+      <SyncButton label="Sync standings" endpoint="/api/admin/sync-standings" />
     </div>
   );
 }

@@ -65,6 +65,7 @@ enum JobName {
   DAILY_ROLLUP
   SYNC_SHIRT_NUMBERS
   NOTIFY_SWEEP
+  SYNC_STANDINGS
 }
 
 enum JobStatus {
@@ -145,6 +146,8 @@ model Team {
   officialLineups   OfficialLineup[]
   restrictedLeagues PrivateLeague[]           @relation("SingleTeamRestriction")
   leagueMemberships PrivateLeagueMembership[]
+  leagueStandings   LeagueStanding[]
+  topScorerEntries  TopScorer[]
 
   @@index([isPremierLeagueClub])
 }
@@ -191,6 +194,54 @@ model Competition {
 
   fixtures            Fixture[]
   restrictedByLeagues PrivateLeague[]
+  standings           LeagueStanding[]
+  topScorers          TopScorer[]
+}
+
+/// One row per club, synced from football-data.org's free-tier standings endpoint (rulebook §13
+/// — real league table, not the app's own prediction leaderboard). Replaced wholesale on every
+/// sync via upsert, never incremented — the source of truth is always whatever football-data.org
+/// last reported.
+model LeagueStanding {
+  id             String      @id @default(uuid())
+  competitionId  String
+  competition    Competition @relation(fields: [competitionId], references: [id])
+  teamId         String
+  team           Team        @relation(fields: [teamId], references: [id])
+  position       Int
+  played         Int
+  won            Int
+  drawn          Int
+  lost           Int
+  goalsFor       Int
+  goalsAgainst   Int
+  goalDifference Int
+  points         Int
+  updatedAt      DateTime    @updatedAt
+
+  @@unique([competitionId, teamId])
+}
+
+/// Season-long goals/assists leaderboard, synced from football-data.org's free-tier scorers
+/// endpoint. No per-match breakdown — see the sync service's comment on why that isn't available
+/// on the free tier. `playerExternalId` is football-data.org's own id, used as the natural key
+/// since a scorer isn't necessarily one of our own tracked SquadPlayer rows (call-ups, loanees,
+/// etc. the squad sync hasn't picked up).
+model TopScorer {
+  id               String      @id @default(uuid())
+  competitionId    String
+  competition      Competition @relation(fields: [competitionId], references: [id])
+  playerExternalId Int
+  playerName       String
+  teamId           String?
+  team             Team?       @relation(fields: [teamId], references: [id])
+  goals            Int
+  assists          Int
+  rank             Int
+  updatedAt        DateTime    @updatedAt
+
+  @@unique([competitionId, playerExternalId])
+  @@index([competitionId, rank])
 }
 
 model Fixture {

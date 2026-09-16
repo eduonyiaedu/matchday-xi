@@ -112,7 +112,7 @@ async function syncPremierLeagueTeamsAndSquads() {
   return { teamsSynced: teams.length, squadsSynced: teamsDueForSquadSync.map((t) => t.name) };
 }
 
-async function upsertOpponentTeam(team: FootballDataMatch["homeTeam"]) {
+export async function upsertOpponentTeam(team: FootballDataMatch["homeTeam"]) {
   return prisma.team.upsert({
     where: { externalId: team.id },
     update: { name: team.name, shortName: team.shortName ?? undefined, crestUrl: team.crest ?? undefined },
@@ -146,6 +146,15 @@ async function syncFixturesForCompetition(code: string) {
     const lockAt = new Date(kickoffAt.getTime() - 2 * 60 * 60 * 1000);
     const isVoidedUpstream = VOIDED_UPSTREAM_STATUSES.has(match.status);
 
+    // football-data.org's `score.fullTime` is live, not "final" — it reflects the current
+    // cumulative score from kickoff onward (e.g. 0-0 moments into the match), not just the result
+    // once the match ends. Writing it unconditionally let an interim in-play score get persisted
+    // and then shown as if final (a shared card read "Sunderland 0-0 Arsenal" hours before the
+    // actual 0-2 finish, simply because the last sync before full-time landed mid-match). Only
+    // trust it once the upstream status says the match has actually finished.
+    const finalHomeScore = match.status === "FINISHED" ? (match.score.fullTime.home ?? undefined) : undefined;
+    const finalAwayScore = match.status === "FINISHED" ? (match.score.fullTime.away ?? undefined) : undefined;
+
     // Postponement/abandonment can be reported at any pipeline stage, including after scoring —
     // void unconditionally and reverse any already-awarded points (rulebook §10).
     if (existing && isVoidedUpstream) {
@@ -159,8 +168,8 @@ async function syncFixturesForCompetition(code: string) {
       await prisma.fixture.update({
         where: { id: existing.id },
         data: {
-          homeScore: match.score.fullTime.home ?? undefined,
-          awayScore: match.score.fullTime.away ?? undefined,
+          homeScore: finalHomeScore,
+          awayScore: finalAwayScore,
         },
       });
       continue;
@@ -176,8 +185,8 @@ async function syncFixturesForCompetition(code: string) {
         homeTeamId: homeTeam.id,
         awayTeamId: awayTeam.id,
         status: isVoidedUpstream ? "VOIDED" : "SCHEDULED",
-        homeScore: match.score.fullTime.home ?? undefined,
-        awayScore: match.score.fullTime.away ?? undefined,
+        homeScore: finalHomeScore,
+        awayScore: finalAwayScore,
       },
       create: {
         externalId: match.id,

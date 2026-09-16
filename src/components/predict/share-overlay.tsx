@@ -53,11 +53,6 @@ export function ShareOverlay({ predictionId, onClose }: { predictionId: string; 
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
-  const canNativeShare =
-    typeof navigator !== "undefined" &&
-    typeof navigator.share === "function" &&
-    typeof navigator.canShare === "function";
-
   function handleSave() {
     if (!imgUrl) return;
     const a = document.createElement("a");
@@ -68,13 +63,17 @@ export function ShareOverlay({ predictionId, onClose }: { predictionId: string; 
     a.remove();
   }
 
+  // A single "Share" action, no separate "Save image" option — the device share sheet is the
+  // whole point (WhatsApp, Instagram, Messages, whatever the OS offers), and on a browser that
+  // can't share files this falls back to a direct download instead of doing nothing.
   async function handleShare() {
     if (!blob) return;
+    const canNativeShare =
+      typeof navigator !== "undefined" &&
+      typeof navigator.share === "function" &&
+      typeof navigator.canShare === "function";
     const file = new File([blob], "matchday-xi.png", { type: "image/png" });
     if (!canNativeShare || !navigator.canShare({ files: [file] })) {
-      // The device exposes navigator.share but this browser can't share files through it (or
-      // navigator.share is missing entirely) — fall back to a direct download instead of a
-      // "Share" button that silently does nothing when tapped.
       handleSave();
       return;
     }
@@ -105,13 +104,8 @@ export function ShareOverlay({ predictionId, onClose }: { predictionId: string; 
       </div>
 
       <div className="flex flex-wrap items-center justify-center gap-2.5">
-        {canNativeShare && (
-          <Button size="lg" disabled={!blob} onClick={handleShare}>
-            Share
-          </Button>
-        )}
-        <Button size="lg" variant="outline" disabled={!imgUrl} onClick={handleSave}>
-          Save image
+        <Button size="lg" disabled={!blob} onClick={handleShare}>
+          Share
         </Button>
       </div>
       <button type="button" onClick={onClose} className="text-sm text-muted-foreground">
