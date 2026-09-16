@@ -1,4 +1,4 @@
-name: Prediction lifecycle (lock sweep + lineup check + daily rollup)
+name: Prediction lifecycle (lock sweep + lineup check + daily rollup + matchday notify)
 
 # NOTE: no `schedule` trigger here on purpose. GitHub Actions' scheduler deprioritizes frequent
 # cron on free/public repos badly enough in practice (confirmed: a "*/5 * * * *" schedule fired
@@ -35,4 +35,13 @@ jobs:
         run: |
           curl --fail --show-error --silent \
             -X POST "${{ secrets.APP_BASE_URL }}/api/cron/daily-rollup" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+
+  matchday-notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call /api/cron/matchday-notify
+        run: |
+          curl --fail --show-error --silent \
+            -X POST "${{ secrets.APP_BASE_URL }}/api/cron/matchday-notify" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"

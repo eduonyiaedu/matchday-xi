@@ -66,6 +66,7 @@ enum JobName {
   SYNC_SHIRT_NUMBERS
   NOTIFY_SWEEP
   SYNC_STANDINGS
+  MATCHDAY_NOTIFY
 }
 
 enum JobStatus {
@@ -270,17 +271,35 @@ model Fixture {
   openNotifiedAt        DateTime?
   /// Set once the "30 minutes to lock" push has gone out, so it only ever fires once per fixture.
   lockWarningNotifiedAt DateTime?
+  /// Set once the "it's matchday" morning nudge (11am UTC, global scope) has gone out, so it only
+  /// ever fires once per fixture — see lib/services/matchday-notify.ts.
+  matchdayNotifiedAt    DateTime?
   homeScore             Int?
   awayScore             Int?
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
 
-  predictions     Prediction[]
-  officialLineups OfficialLineup[]
+  predictions                 Prediction[]
+  officialLineups             OfficialLineup[]
+  privateLeagueMatchdayPushes PrivateLeagueMatchdayNotification[]
 
   @@index([kickoffAt])
   @@index([lockAt])
   @@index([status])
+}
+
+/// Dedup record for the private-league "it's matchday" nudge — needed separately from
+/// Fixture.matchdayNotifiedAt because one fixture can be relevant to several private leagues at
+/// once (different member teams, different active windows), each needing its own one-time push.
+model PrivateLeagueMatchdayNotification {
+  id         String        @id @default(uuid())
+  fixtureId  String
+  fixture    Fixture       @relation(fields: [fixtureId], references: [id])
+  leagueId   String
+  league     PrivateLeague @relation(fields: [leagueId], references: [id])
+  notifiedAt DateTime      @default(now())
+
+  @@unique([fixtureId, leagueId])
 }
 
 /// A user's 11-player guess for one fixture. null privateLeagueId = global/per-team;
@@ -425,8 +444,9 @@ model PrivateLeague {
   entryFee                Decimal?              @db.Decimal(10, 2)
   createdAt               DateTime              @default(now())
 
-  memberships PrivateLeagueMembership[]
-  predictions Prediction[]
+  memberships    PrivateLeagueMembership[]
+  predictions    Prediction[]
+  matchdayPushes PrivateLeagueMatchdayNotification[]
 
   @@index([creatorId])
 }
