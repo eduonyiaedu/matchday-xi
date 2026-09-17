@@ -137,13 +137,18 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
                       <CardDescription>
                         <LocalTime iso={f.kickoffAt.toISOString()} />
                       </CardDescription>
-                      {!locked && isNext && !windowOpen && (
-                        <div className="mt-1.5">
-                          <FixtureEligibilityBadge isNext={isNext} windowOpen={windowOpen} opensAt={predictionOpensAt(f)} />
-                        </div>
-                      )}
+                      <FixtureEligibilityBadge
+                        locked={locked}
+                        isNext={isNext}
+                        windowOpen={windowOpen}
+                        opensAt={predictionOpensAt(f)}
+                      />
                     </div>
-                    <div className="flex items-center gap-2">{locked && <Badge variant="outline">Locked</Badge>}</div>
+                    {locked && (
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline">Locked</Badge>
+                      </div>
+                    )}
                   </CardHeader>
                   <CardContent>
                     {locked || actionable ? (

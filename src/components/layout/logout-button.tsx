@@ -2,11 +2,16 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { BottomSheet, BottomSheetContent, BottomSheetTitle, BottomSheetDescription } from "@/components/ui/bottom-sheet";
 import type { VariantProps } from "class-variance-authority";
 
+// When used from a persistent layout (e.g. the (app) layout's nav, which never unmounts between
+// route changes), pass `key={pathname}` at the call site so React remounts this component fresh
+// on every navigation — otherwise opening the confirm sheet and then navigating away via a nav
+// link (instead of Cancel/Log out) would leave it stuck open on top of whatever page loads next.
 export function LogoutButton({
   className,
   variant = "outline",
@@ -18,10 +23,16 @@ export function LogoutButton({
 
   async function logout() {
     setLoading(true);
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    router.push("/login");
-    router.refresh();
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      router.push("/login");
+      router.refresh();
+    } catch {
+      toast.error("Couldn't log out — check your connection and try again.");
+      setLoading(false);
+    }
   }
 
   return (

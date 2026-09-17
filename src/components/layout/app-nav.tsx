@@ -87,7 +87,7 @@ export function AppNav({
             <div className="flex size-8 items-center justify-center rounded-full bg-club font-heading text-[11px] font-bold text-pitch">
               {teamInitials}
             </div>
-            <LogoutButton variant="ghost" size="sm" />
+            <LogoutButton key={pathname} variant="ghost" size="sm" />
           </div>
         </div>
       </header>

@@ -63,20 +63,19 @@ export default async function FixturesPage() {
                 <p className="text-sm text-muted-foreground">
                   {fixture.competition.name} · <LocalTime iso={fixture.kickoffAt.toISOString()} />
                 </p>
-                {!locked && isNext && !windowOpen && (
-                  <div className="mt-1.5">
-                    <FixtureEligibilityBadge
-                      isNext={isNext}
-                      windowOpen={windowOpen}
-                      opensAt={predictionOpensAt(fixture)}
-                    />
-                  </div>
-                )}
+                <FixtureEligibilityBadge
+                  locked={locked}
+                  isNext={isNext}
+                  windowOpen={windowOpen}
+                  opensAt={predictionOpensAt(fixture)}
+                />
               </div>
-              <div className="flex items-center gap-2">
-                {hasPrediction && <Badge variant="secondary">Submitted</Badge>}
-                {locked && <Badge variant="outline">Locked</Badge>}
-              </div>
+              {(hasPrediction || locked) && (
+                <div className="flex items-center gap-2">
+                  {hasPrediction && <Badge variant="secondary">Submitted</Badge>}
+                  {locked && <Badge variant="outline">Locked</Badge>}
+                </div>
+              )}
             </CardHeader>
             <CardContent>
               {locked || actionable ? (
