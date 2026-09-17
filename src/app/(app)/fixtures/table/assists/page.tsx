@@ -16,7 +16,7 @@ export default async function AssistsPage() {
   const scorers = await prisma.topScorer.findMany({
     where: { competition: { externalId: "PL" } },
     include: { team: { select: { name: true, shortName: true } } },
-    orderBy: { assists: "desc" },
+    orderBy: [{ assists: "desc" }, { playerName: "asc" }],
   });
 
   return (
@@ -30,7 +30,7 @@ export default async function AssistsPage() {
           <CardTitle className="text-base">Top assists</CardTitle>
         </CardHeader>
         <CardContent className="px-0 pt-0">
-          <ScorerList rows={scorers} emphasize="assists" />
+          <ScorerList rows={scorers} emphasize="assists" favoriteTeamId={user.favoriteTeamId} />
         </CardContent>
       </Card>
     </div>
