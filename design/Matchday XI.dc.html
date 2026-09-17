@@ -1,0 +1,1385 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#07150F;}
+a{color:#F0B429;text-decoration:none;}
+a:hover{color:#FFD65A;}
+input{font-family:inherit;}
+@keyframes mdxiPulse{0%{box-shadow:0 0 0 0 rgba(108,171,221,0.45)}70%{box-shadow:0 0 0 12px rgba(108,171,221,0)}100%{box-shadow:0 0 0 0 rgba(108,171,221,0)}}
+@keyframes mdxiPop{0%{transform:scale(0.4);opacity:0}60%{transform:scale(1.14);opacity:1}100%{transform:scale(1);opacity:1}}
+@keyframes mdxiRow{0%{opacity:0;transform:translateX(-10px)}9%{opacity:1;transform:translateX(0)}92%{opacity:1;transform:translateX(0)}100%{opacity:0;transform:translateX(-10px)}}
+@keyframes mdxiStamp{0%{opacity:0;transform:rotate(-14deg) scale(2.6)}30%{opacity:0;transform:rotate(-14deg) scale(2.6)}36%{opacity:1;transform:rotate(-8deg) scale(0.94)}40%{transform:rotate(-9deg) scale(1.04)}44%{transform:rotate(-9deg) scale(1)}92%{opacity:1;transform:rotate(-9deg) scale(1)}100%{opacity:0;transform:rotate(-9deg) scale(1)}}
+@keyframes mdxiShock{0%{opacity:0;transform:scale(0.2)}36%{opacity:0.5;transform:scale(0.4)}48%{opacity:0;transform:scale(1.5)}100%{opacity:0;transform:scale(1.5)}}
+@keyframes mdxiTick{0%{transform:translateY(0)}26%{transform:translateY(-546px)}100%{transform:translateY(-546px)}}
+@keyframes mdxiFade{0%{opacity:0;transform:translateY(14px)}46%{opacity:0;transform:translateY(14px)}56%{opacity:1;transform:translateY(0)}92%{opacity:1;transform:translateY(0)}100%{opacity:0}}
+@keyframes mdxiFall{0%{opacity:0;transform:translateY(-40px) rotate(0)}10%{opacity:1}72%{opacity:1;transform:translateY(700px) rotate(420deg)}100%{opacity:0;transform:translateY(760px) rotate(500deg)}}
+@keyframes mdxiSheet{0%{transform:translateY(100%)}100%{transform:translateY(0)}}
+@media (prefers-reduced-motion: reduce){
+  [data-anim]{animation:none !important;opacity:1 !important;transform:none !important;}
+  [data-anim-stamp]{animation:none !important;opacity:1 !important;transform:rotate(-9deg) !important;}
+  [data-anim-tick]{animation:none !important;transform:translateY(-546px) !important;}
+  [data-anim-confetti]{display:none !important;}
+}
+</style>
+</helmet>
+
+<div style="min-height:100%;background:#07150F;color:#F5F3EC;font-family:Inter,system-ui,sans-serif;padding:0 0 60px">
+
+  <div style="position:sticky;top:0;z-index:60;background:rgba(7,21,15,0.94);border-bottom:1px solid rgba(245,243,236,0.10);padding:14px 20px 12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+    <div style="display:flex;align-items:baseline;gap:6px">
+      <span style="font-family:Oswald,sans-serif;font-weight:700;font-size:15px;letter-spacing:0.06em;text-transform:uppercase">Matchday</span>
+      <span style="font-family:Oswald,sans-serif;font-weight:700;font-size:15px;letter-spacing:0.06em;color:#F0B429">XI</span>
+      <span style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.16em;color:#8A9A90;margin-left:6px">FLOODLIGHT</span>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <sc-for list="{{ navItems }}" as="n" hint-placeholder-count="11">
+        <div onClick="{{ n.onClick }}" style="{{ n.style }}">{{ n.label }}</div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="display:flex;justify-content:center;padding:28px 20px 0">
+    <div style="{{ stageStyle }}">
+
+      <sc-if value="{{ isLanding }}" hint-placeholder-val="{{ false }}">
+        <div style="position:relative;background:#0B1F17;border-radius:30px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,0.6)">
+          <div style="position:absolute;top:-140px;left:-60px;width:520px;height:440px;background:radial-gradient(ellipse at 50% 40%,rgba(240,180,41,0.22),rgba(108,171,221,0.07) 44%,rgba(11,31,23,0) 72%)"></div>
+          <div style="position:relative;padding:26px 22px 30px">
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <div style="display:flex;align-items:baseline;gap:6px">
+                <span style="font-family:Oswald,sans-serif;font-weight:700;font-size:18px;letter-spacing:0.05em;text-transform:uppercase">Matchday</span>
+                <span style="font-family:Oswald,sans-serif;font-weight:700;font-size:18px;letter-spacing:0.05em;color:#F0B429">XI</span>
+              </div>
+              <div style="font-size:13px;color:#8A9A90;padding:8px 4px">Log in</div>
+            </div>
+            <h1 style="margin:26px 0 0;font-family:Oswald,sans-serif;font-weight:600;font-size:38px;line-height:1.02;text-transform:uppercase;text-wrap:balance">Call the XI<br>before the<br><span style="color:#F0B429">manager does</span></h1>
+            <p style="margin:14px 0 0;font-size:14px;line-height:1.5;color:#8A9A90;max-width:300px;text-wrap:pretty">Pick your club's starting eleven before kickoff. Scored the second the real team sheet drops.</p>
+            <div style="margin-top:22px;background:#132A20;border-radius:16px;padding:14px;box-shadow:0 12px 34px rgba(0,0,0,0.45),inset 0 0 0 1px rgba(108,171,221,0.2)">
+              <div style="display:flex;align-items:center;justify-content:space-between;padding-bottom:11px">
+                <span style="font-family:Oswald,sans-serif;font-weight:600;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:#8A9A90">Try it — Man City vs Arsenal</span>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#F0B429">{{ demoCount }}/11</span>
+              </div>
+              <div style="position:relative;height:250px;border-radius:10px;background:repeating-linear-gradient(90deg,#0E2A1F 0,#0E2A1F 24px,#103020 24px,#103020 48px);box-shadow:inset 0 0 0 1.5px rgba(245,243,236,0.18);overflow:hidden">
+                <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(245,243,236,0.14),rgba(11,31,23,0) 60%)"></div>
+                <div style="position:absolute;left:50%;top:50%;width:66px;height:66px;margin:-33px 0 0 -33px;border:1.5px solid rgba(245,243,236,0.18);border-radius:999px"></div>
+                <sc-for list="{{ demoSlots }}" as="d" hint-placeholder-count="11">
+                  <div onClick="{{ d.onClick }}" style="{{ d.style }}">{{ d.mark }}</div>
+                </sc-for>
+              </div>
+              <p style="margin:11px 0 0;font-size:12px;color:#8A9A90;text-align:center">{{ demoHint }}</p>
+            </div>
+            <div style="margin-top:18px;background:linear-gradient(180deg,#FFE28F 0%,#F7C63C 44%,#DE9C10 100%);color:#0B1F17;text-align:center;font-family:Oswald,sans-serif;font-weight:600;font-size:15px;letter-spacing:0.06em;text-transform:uppercase;padding:15px;border-radius:12px;box-shadow:0 8px 22px rgba(240,180,41,0.26)">Create your free account</div>
+            <div style="margin-top:20px;display:flex;flex-direction:column;gap:1px;background:rgba(245,243,236,0.08);border-radius:12px;overflow:hidden">
+              <div style="background:#0B1F17;padding:14px 15px">
+                <p style="margin:0;font-family:Oswald,sans-serif;font-weight:600;font-size:14px;text-transform:uppercase">+1 per starter, +3 for all eleven</p>
+                <p style="margin:4px 0 0;font-size:12px;color:#8A9A90">Locks two hours before kickoff. No edits after.</p>
+              </div>
+              <div style="background:#0B1F17;padding:14px 15px">
+                <p style="margin:0;font-family:Oswald,sans-serif;font-weight:600;font-size:14px;text-transform:uppercase">Two tables to climb</p>
+                <p style="margin:4px 0 0;font-size:12px;color:#8A9A90">Everyone, and just your club's fans.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isOnboard }}" hint-placeholder-val="{{ false }}">
+        <div style="position:relative;background:#0B1F17;border-radius:30px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,0.6);min-height:780px">
+          <div style="position:absolute;top:-120px;left:-40px;width:500px;height:380px;background:radial-gradient(ellipse at 50% 40%,rgba(240,180,41,0.16),rgba(11,31,23,0) 70%)"></div>
+          <div style="position:relative;padding:34px 20px 24px">
+            <p style="margin:0;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.2em;color:#8A9A90;text-transform:uppercase">Step 2 of 2</p>
+            <h1 style="margin:8px 0 0;font-family:Oswald,sans-serif;font-weight:600;font-size:30px;line-height:1.05;text-transform:uppercase">Pick your club</h1>
+            <p style="margin:9px 0 0;font-size:13px;color:#8A9A90;text-wrap:pretty">This sets the team you predict every week — and colours the whole app. <span style="color:#F0B429">You can change it until your first prediction locks.</span></p>
+            <div style="margin-top:18px;display:grid;grid-template-columns:repeat(3,1fr);gap:9px">
+              <sc-for list="{{ clubTiles }}" as="c" hint-placeholder-count="18">
+                <div onClick="{{ c.onClick }}" style="{{ c.style }}">
+                  <div style="{{ c.crestStyle }}">{{ c.initials }}</div>
+                  <span style="font-family:Oswald,sans-serif;font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:0.02em;text-align:center;line-height:1.15">{{ c.short }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="position:sticky;bottom:0;background:linear-gradient(180deg,rgba(11,31,23,0),#0B1F17 28%);padding:24px 20px 22px">
+            <div onClick="{{ onOpenConfirm }}" style="{{ confirmStyle }}">{{ confirmLabel }}</div>
+          </div>
+        </div>
+        <sc-if value="{{ showConfirm }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;inset:0;background:rgba(7,21,15,0.78);border-radius:30px;display:flex;align-items:flex-end">
+            <div style="width:100%;background:#132A20;border-radius:22px 22px 30px 30px;padding:24px 20px 22px;box-shadow:0 -14px 44px rgba(0,0,0,0.5)" data-anim="sheet">
+              <div style="width:38px;height:4px;border-radius:2px;background:rgba(245,243,236,0.2);margin:0 auto 18px"></div>
+              <div style="display:flex;align-items:center;gap:12px">
+                <div style="{{ confirmCrestStyle }}">{{ confirmInitials }}</div>
+                <div>
+                  <p style="margin:0;font-family:Oswald,sans-serif;font-weight:600;font-size:20px;text-transform:uppercase">{{ confirmClub }}</p>
+                  <p style="margin:3px 0 0;font-size:12px;color:#8A9A90">Your club for the season</p>
+                </div>
+              </div>
+              <p style="margin:16px 0 0;font-size:13px;line-height:1.5;color:#F5F3EC;text-wrap:pretty">You can switch clubs freely until your first prediction locks. After that it's permanent — points and Perfect XIs stay tied to this club.</p>
+              <div onClick="{{ onConfirmClub }}" style="margin-top:18px;background:linear-gradient(180deg,#FFE28F 0%,#F7C63C 44%,#DE9C10 100%);color:#0B1F17;text-align:center;font-family:Oswald,sans-serif;font-weight:600;font-size:15px;letter-spacing:0.06em;text-transform:uppercase;padding:15px;border-radius:12px;cursor:pointer">Lock it in</div>
+              <div onClick="{{ onCancelConfirm }}" style="margin-top:8px;text-align:center;font-size:13px;color:#8A9A90;padding:10px;cursor:pointer">Not yet</div>
+            </div>
+          </div>
+        </sc-if>
+      </sc-if>
+
+      <sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+        <div style="position:relative;background:#0B1F17;border-radius:30px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,0.6);min-height:800px;padding-bottom:92px">
+          <div style="position:absolute;top:-120px;left:-60px;width:510px;height:420px;background:radial-gradient(ellipse at 50% 40%,rgba(240,180,41,0.20),rgba(108,171,221,0.07) 44%,rgba(11,31,23,0) 72%);pointer-events:none"></div>
+
+          <div style="position:relative;display:flex;align-items:center;justify-content:space-between;padding:22px 20px 16px">
+            <div style="display:flex;align-items:baseline;gap:6px">
+              <span style="font-family:Oswald,sans-serif;font-weight:700;font-size:19px;letter-spacing:0.05em;text-transform:uppercase">Matchday</span>
+              <span style="font-family:Oswald,sans-serif;font-weight:700;font-size:19px;letter-spacing:0.05em;color:#F0B429">XI</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="display:flex;align-items:center;gap:5px;padding:6px 11px;border-radius:999px;background:rgba(240,180,41,0.14);box-shadow:inset 0 0 0 1px rgba(240,180,41,0.3)">
+                <svg width="11" height="14" viewBox="0 0 10 13"><path d="M5 0.5C5 3 7.2 3.4 7.2 6.2 7.2 7.4 6.5 8.3 5.6 8.7 6 7.9 5.9 6.9 5.2 6.3 5.3 7.6 4.3 8 3.6 8.8 3 9.5 3 10.6 3.7 11.4 2.1 10.9 1 9.4 1 7.6 1 4.6 4 4.2 5 0.5Z" fill="#F0B429"></path></svg>
+                <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:11px;color:#F0B429">12</span>
+              </div>
+              <div onClick="{{ onTapClub }}" style="width:32px;height:32px;border-radius:999px;background:#6CABDD;color:#0B1F17;display:flex;align-items:center;justify-content:center;font-family:Oswald,sans-serif;font-weight:700;font-size:12px;box-shadow:0 0 0 2px rgba(108,171,221,0.25);cursor:pointer">MCI</div>
+            </div>
+          </div>
+
+          <div style="position:relative;padding:6px 20px 0">
+            <h1 style="margin:0;font-family:Oswald,sans-serif;font-weight:600;font-size:32px;line-height:1.06;text-transform:uppercase">Evening,<br>Edu</h1>
+            <p style="margin:8px 0 0;font-size:12px;color:#8A9A90">@eduonyia · Manchester City</p>
+            <p style="margin:9px 0 0;font-size:13px;color:#8A9A90">City play in <span style="color:#F5F3EC;font-weight:500">4 hours</span> — your XI isn't in yet.</p>
+          </div>
+
+          <div style="position:relative;margin:18px 20px 0;border-radius:16px;overflow:hidden;background:#132A20;box-shadow:0 10px 30px rgba(0,0,0,0.45),0 0 0 1px rgba(108,171,221,0.28)">
+            <div style="height:148px;position:relative;background:repeating-linear-gradient(90deg,#0E2A1F 0,#0E2A1F 26px,#103020 26px,#103020 52px)">
+              <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(245,243,236,0.16),rgba(11,31,23,0) 62%)"></div>
+              <div style="position:absolute;inset:14px 18px;border:1.5px solid rgba(245,243,236,0.22);border-radius:3px"></div>
+              <div style="position:absolute;left:50%;top:50%;width:56px;height:56px;margin:-28px 0 0 -28px;border:1.5px solid rgba(245,243,236,0.22);border-radius:999px"></div>
+              <div style="position:absolute;left:0;right:0;bottom:16px;display:flex;justify-content:center;gap:8px">
+                <span style="width:9px;height:9px;border-radius:999px;background:rgba(245,243,236,0.22)"></span>
+                <span style="width:9px;height:9px;border-radius:999px;background:rgba(245,243,236,0.22)"></span>
+                <span style="width:9px;height:9px;border-radius:999px;background:rgba(245,243,236,0.22)"></span>
+                <span style="width:9px;height:9px;border-radius:999px;background:rgba(245,243,236,0.22)"></span>
+              </div>
+              <div style="position:absolute;top:12px;right:14px;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.08em;color:#F0B429;background:rgba(11,31,23,0.72);padding:4px 8px;border-radius:999px">{{ countdown }} TO LOCK</div>
+            </div>
+            <div style="padding:16px 17px 17px">
+              <p style="margin:0;font-family:Oswald,sans-serif;font-weight:600;font-size:19px;text-transform:uppercase;line-height:1.1">Man City <span style="color:#8A9A90;font-weight:400">vs</span> Arsenal</p>
+              <p style="margin:4px 0 0;font-family:'JetBrains Mono',monospace;font-size:11px;color:#8A9A90">SAT 17:30 · ETIHAD · PREMIER LEAGUE</p>
+              <div style="margin-top:14px;display:flex;align-items:center;gap:11px">
+                <div style="flex:1;height:6px;border-radius:999px;background:rgba(245,243,236,0.10);overflow:hidden">
+                  <div style="width:0%;height:100%;background:linear-gradient(90deg,#6CABDD,#F0B429)"></div>
+                </div>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#8A9A90">0/11</span>
+              </div>
+              <div onClick="{{ goBuilder }}" style="margin-top:14px;background:linear-gradient(180deg,#FFE28F 0%,#F7C63C 44%,#DE9C10 100%);color:#0B1F17;text-align:center;font-family:Oswald,sans-serif;font-weight:600;font-size:15px;letter-spacing:0.06em;text-transform:uppercase;padding:14px;border-radius:10px;box-shadow:0 6px 18px rgba(240,180,41,0.28);cursor:pointer">Build your lineup</div>
+            </div>
+          </div>
+
+          <div style="position:relative;margin:14px 20px 0;display:flex;flex-direction:column;gap:11px">
+            <div style="background:#132A20;border-radius:14px;padding:15px;box-shadow:0 4px 14px rgba(0,0,0,0.3),inset 0 0 0 1px rgba(245,243,236,0.06);display:flex;align-items:center;justify-content:space-between">
+              <div>
+                <p style="margin:0;font-family:Oswald,sans-serif;font-size:10px;letter-spacing:0.16em;text-transform:uppercase;color:#8A9A90">Global</p>
+                <p style="margin:7px 0 0;font-family:Oswald,sans-serif;font-weight:600;font-size:27px;color:#F0B429;line-height:1">#2,418</p>
+                <p style="margin:5px 0 0;font-family:'JetBrains Mono',monospace;font-size:10px;color:#8A9A90">184 PTS · 3 PERFECT XI</p>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:5px">
+                <span style="width:26px;height:26px;border-radius:999px;background:linear-gradient(145deg,#C6803F,#8C5122);display:block;box-shadow:0 0 14px rgba(240,180,41,0.3)"></span>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:0.1em;color:#8A9A90">BRONZE</span>
+              </div>
+            </div>
+            <div style="background:#132A20;border-radius:14px;padding:15px;box-shadow:0 4px 14px rgba(0,0,0,0.3),inset 0 0 0 1px rgba(108,171,221,0.25);display:flex;align-items:center;justify-content:space-between">
+              <div>
+                <p style="margin:0;font-family:Oswald,sans-serif;font-size:10px;letter-spacing:0.16em;text-transform:uppercase;color:#8A9A90">Man City fans</p>
+                <p style="margin:7px 0 0;font-family:Oswald,sans-serif;font-weight:600;font-size:27px;color:#6CABDD;line-height:1">#312</p>
+                <p style="margin:5px 0 0;font-family:'JetBrains Mono',monospace;font-size:10px;color:#8A9A90">184 PTS · TOP 8%</p>
+              </div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#6CABDD">▲ 14</div>
+            </div>
+            <div style="background:#132A20;border-radius:14px;padding:15px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 4px 14px rgba(0,0,0,0.3),inset 0 0 0 1px rgba(245,243,236,0.06)">
+              <div style="display:flex;align-items:center;gap:12px">
+                <div style="width:38px;height:38px;border-radius:999px;background:radial-gradient(circle at 50% 60%,rgba(240,180,41,0.35),rgba(240,180,41,0.05));display:flex;align-items:center;justify-content:center">
+                  <svg width="15" height="19" viewBox="0 0 10 13"><path d="M5 0.5C5 3 7.2 3.4 7.2 6.2 7.2 7.4 6.5 8.3 5.6 8.7 6 7.9 5.9 6.9 5.2 6.3 5.3 7.6 4.3 8 3.6 8.8 3 9.5 3 10.6 3.7 11.4 2.1 10.9 1 9.4 1 7.6 1 4.6 4 4.2 5 0.5Z" fill="#F0B429"></path></svg>
+                </div>
+                <div>
+                  <p style="margin:0;font-family:Oswald,sans-serif;font-weight:500;font-size:16px;text-transform:uppercase">12 day streak</p>
+                  <p style="margin:3px 0 0;font-size:11px;color:#8A9A90">Draw eligible · 9 days keeps it that way</p>
+                </div>
+              </div>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#8A9A90">21 BEST</span>
+            </div>
+          </div>
+
+          <div style="position:relative;margin:24px 20px 0">
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <span style="font-family:Oswald,sans-serif;font-weight:600;font-size:13px;letter-spacing:0.16em;text-transform:uppercase;color:#8A9A90">Your leagues</span>
+              <span style="font-size:11px;color:#F0B429">See all</span>
+            </div>
+            <div style="margin-top:10px;display:flex;flex-direction:column;gap:9px">
+              <div style="background:#132A20;border-radius:12px;padding:13px 14px;display:flex;align-items:center;justify-content:space-between;box-shadow:inset 0 0 0 1px rgba(245,243,236,0.06)">
+                <div style="display:flex;align-items:center;gap:11px">
+                  <span style="width:6px;height:30px;border-radius:3px;background:#C8102E;display:block"></span>
+                  <div>
+                    <p style="margin:0;font-family:Oswald,sans-serif;font-weight:500;font-size:15px;text-transform:uppercase">Sunday League Lads</p>
+                    <p style="margin:2px 0 0;font-size:11px;color:#8A9A90">14 members · Man City</p>
+                  </div>
+                </div>
+                <span style="font-family:Oswald,sans-serif;font-weight:600;font-size:18px;color:#F0B429">#3</span>
+              </div>
+              <div style="background:#132A20;border-radius:12px;padding:13px 14px;display:flex;align-items:center;justify-content:space-between;box-shadow:inset 0 0 0 1px rgba(245,243,236,0.06)">
+                <div style="display:flex;align-items:center;gap:11px">
+                  <span style="width:6px;height:30px;border-radius:3px;background:#6CABDD;display:block"></span>
+                  <div>
+                    <p style="margin:0;font-family:Oswald,sans-serif;font-weight:500;font-size:15px;text-transform:uppercase">The Office XI</p>
+                    <p style="margin:2px 0 0;font-size:11px;color:#8A9A90">8 members · Arsenal</p>
+                  </div>
+                </div>
+                <span style="font-family:Oswald,sans-serif;font-weight:600;font-size:18px">#6</span>
+              </div>
+            </div>
+          </div>
+
+          <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(11,31,23,0.95);border-top:1px solid rgba(245,243,236,0.09);display:grid;grid-template-columns:repeat(6,1fr);padding:10px 4px 18px">
+            <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="6">
+              <div style="display:flex;flex-direction:column;align-items:center;gap:5px">
+                <div style="{{ t.iconStyle }}" data-icon="{{ t.key }}">{{ t.icon }}</div>
+                <span style="{{ t.labelStyle }}">{{ t.label }}</span>
+              </div>
+            </sc-for>
+          </div>
+
+          <sc-if value="{{ showClubSheet }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute;inset:0;background:rgba(7,21,15,0.8);border-radius:30px;display:flex;align-items:flex-end;z-index:20">
+              <div style="width:100%;background:#132A20;border-radius:22px 22px 30px 30px;padding:22px 20px;box-shadow:0 -14px 44px rgba(0,0,0,0.5)" data-anim="sheet">
+                <div style="width:38px;height:4px;border-radius:2px;background:rgba(245,243,236,0.2);margin:0 auto 18px"></div>
+                <div style="display:flex;align-items:center;gap:11px">
+                  <div style="width:42px;height:42px;border-radius:999px;background:#6CABDD;color:#0B1F17;display:flex;align-items:center;justify-content:center;font-family:Oswald,sans-serif;font-weight:700;font-size:14px">MCI</div>
+                  <div>
+                    <p style="margin:0;font-family:Oswald,sans-serif;font-weight:600;font-size:19px;text-transform:uppercase">Manchester City</p>
+                    <p style="margin:3px 0 0;font-family:'JetBrains Mono',monospace;font-size:10px;color:#F0B429;letter-spacing:0.1em">LOCKED 16 AUG 2026</p>
+                  </div>
+                </div>
+                <p style="margin:16px 0 0;font-size:13px;line-height:1.5;color:#F5F3EC;text-wrap:pretty">Your club locked when your first prediction locked. Every point and Perfect XI you've earned belongs to this club, so it stays put for the season.</p>
+                <div onClick="{{ onCloseClubSheet }}" style="margin-top:18px;text-align:center;font-family:Oswald,sans-serif;font-weight:600;font-size:14px;letter-spacing:0.06em;text-transform:uppercase;padding:14px;border-radius:11px;box-shadow:inset 0 0 0 1px rgba(245,243,236,0.18);cursor:pointer">Got it</div>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isHomeNew }}" hint-placeholder-val="{{ false }}">
+        <div style="position:relative;background:#0B1F17;border-radius:30px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,0.6);min-height:800px;padding-bottom:92px">
+          <div style="position:absolute;top:-120px;left:-60px;width:510px;height:420px;background:radial-gradient(ellipse at 50% 40%,rgba(240,180,41,0.20),rgba(108,171,221,0.07) 44%,rgba(11,31,23,0) 72%)"></div>
+          <div style="position:relative;display:flex;align-items:center;justify-content:space-between;padding:22px 20px 16px">
+            <div style="display:flex;align-items:baseline;gap:6px">
+              <span style="font-family:Oswald,sans-serif;font-weight:700;font-size:19px;letter-spacing:0.05em;text-transform:uppercase">Matchday</span>
+              <span style="font-family:Oswald,sans-serif;font-weight:700;font-size:19px;letter-spacing:0.05em;color:#F0B429">XI</span>
+            </div>
+            <div style="width:32px;height:32px;border-radius:999px;background:#6CABDD;color:#0B1F17;display:flex;align-items:center;justify-content:center;font-family:Oswald,sans-serif;font-weight:700;font-size:12px">MCI</div>
+          </div>
+          <div style="position:relative;padding:6px 20px 0">
+            <h1 style="margin:0;font-family:Oswald,sans-serif;font-weight:600;font-size:32px;line-height:1.06;text-transform:uppercase">Welcome,<br>Edu</h1>
+            <p style="margin:8px 0 0;font-size:12px;color:#8A9A90">@eduonyia · Manchester City</p>
+          </div>
+          <div style="position:relative;margin:18px 20px 0;border-radius:16px;background:#132A20;padding:20px 18px;box-shadow:0 10px 30px rgba(0,0,0,0.45),0 0 0 1px rgba(108,171,221,0.28);text-align:center">
+            <p style="margin:0;font-family:Oswald,sans-serif;font-weight:600;font-size:22px;text-transform:uppercase;line-height:1.1">Your first XI is<br>waiting</p>
+            <p style="margin:9px 0 0;font-size:13px;color:#8A9A90">Man City vs Arsenal · Saturday 17:30</p>
+            <p style="margin:14px 0 0;font-family:'JetBrains Mono',monospace;font-size:20px;color:#F0B429;letter-spacing:0.04em">{{ countdown }}</p>
+            <p style="margin:4px 0 0;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.16em;color:#8A9A90">UNTIL PREDICTIONS LOCK</p>
+            <div onClick="{{ goBuilder }}" style="margin-top:16px;background:linear-gradient(180deg,#FFE28F 0%,#F7C63C 44%,#DE9C10 100%);color:#0B1F17;font-family:Oswald,sans-serif;font-weight:600;font-size:15px;letter-spacing:0.06em;text-transform:uppercase;padding:14px;border-radius:10px;box-shadow:0 6px 18px rgba(240,180,41,0.28);cursor:pointer">Build your first lineup</div>
+          </div>
+          <div style="position:relative;margin:14px 20px 0;display:grid;grid-template-columns:1fr 1fr;gap:11px">
+            <div style="background:#132A20;border-radius:14px;padding:15px;box-shadow:inset 0 0 0 1px rgba(245,243,236,0.06)">
+              <p style="margin:0;font-family:Oswald,sans-serif;font-size:10px;letter-spacing:0.16em;text-transform:uppercase;color:#8A9A90">Global</p>
+              <p style="margin:7px 0 0;font-family:Oswald,sans-serif;font-weight:600;font-size:27px;color:#8A9A90;line-height:1">—</p>
+              <p style="margin:5px 0 0;font-size:10px;color:#8A9A90">Play a matchday to rank</p>
+            </div>
+            <div style="background:#132A20;border-radius:14px;padding:15px;box-shadow:inset 0 0 0 1px rgba(108,171,221,0.2)">
+              <p style="margin:0;font-family:Oswald,sans-serif;font-size:10px;letter-spacing:0.16em;text-transform:uppercase;color:#8A9A90">City fans</p>
+              <p style="margin:7px 0 0;font-family:Oswald,sans-serif;font-weight:600;font-size:27px;color:#8A9A90;line-height:1">—</p>
+              <p style="margin:5px 0 0;font-size:10px;color:#8A9A90">Play a matchday to rank</p>
+            </div>
+          </div>
+          <div style="position:relative;margin:11px 20px 0;background:#132A20;border-radius:14px;padding:16px;box-shadow:inset 0 0 0 1px rgba(245,243,236,0.06)">
+            <p style="margin:0;font-family:Oswald,sans-serif;font-weight:600;font-size:12px;letter-spacing:0.16em;text-transform:uppercase;color:#8A9A90">How you score</p>
+            <div style="margin-top:12px;display:flex;flex-direction:column;gap:9px">
+              <div style="display:flex;align-items:center;gap:11px">
+                <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:15px;color:#F0B429;width:26px">+1</span>
+                <span style="font-size:13px">for every player who actually starts</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:11px">
+                <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:15px;color:#F0B429;width:26px">+3</span>
+                <span style="font-size:13px">bonus if you call all eleven</span>
+              </div>
+            </div>
+          </div>
+          <div style="position:relative;margin:11px 20px 0;background:#132A20;border-radius:14px;padding:16px;display:flex;align-items:center;justify-content:space-between;box-shadow:inset 0 0 0 1px rgba(245,243,236,0.06)">
+            <div>
+              <p style="margin:0;font-family:Oswald,sans-serif;font-weight:600;font-size:15px;text-transform:uppercase">Nothing on the shelf yet</p>
+              <p style="margin:4px 0 0;font-size:11.5px;color:#8A9A90">One Perfect XI earns Bronze. Five earns Silver.</p>
+            </div>
+            <span style="width:30px;height:30px;border-radius:999px;box-shadow:inset 0 0 0 2px rgba(245,243,236,0.18);display:block"></span>
+          </div>
+          <div style="position:relative;margin:11px 20px 0;background:#132A20;border-radius:14px;padding:16px;box-shadow:inset 0 0 0 1px rgba(245,243,236,0.06)">
+            <p style="margin:0;font-family:Oswald,sans-serif;font-weight:600;font-size:15px;text-transform:uppercase">What you're playing for</p>
+            <p style="margin:5px 0 0;font-size:11.5px;color:#8A9A90;text-wrap:pretty">A monthly draw for everyone who predicts every matchday and logs in daily — plus season prizes for the top three. Free to enter.</p>
+          </div>
+          <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(11,31,23,0.95);border-top:1px solid rgba(245,243,236,0.09);display:grid;grid-template-columns:repeat(6,1fr);padding:10px 4px 18px">
+            <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="6">
+              <div style="display:flex;flex-direction:column;align-items:center;gap:5px">
+                <div style="{{ t.iconStyle }}">{{ t.icon }}</div>
+                <span style="{{ t.labelStyle }}">{{ t.label }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isBuilder }}" hint-placeholder-val="{{ false }}">
+        <div style="position:relative;background:#0B1F17;border-radius:30px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,0.6);min-height:800px">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 18px 14px;border-bottom:1px solid rgba(245,243,236,0.08)">
+            <div onClick="{{ goHome }}" style="font-size:13px;color:#8A9A90;cursor:pointer">← Back</div>
+            <div style="text-align:center">
+              <p style="margin:0;font-family:Oswald,sans-serif;font-weight:600;font-size:15px;text-transform:uppercase">Man City vs Arsenal</p>
+              <p style="margin:2px 0 0;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.1em;color:#F0B429">{{ countdown }} TO LOCK</p>
+            </div>
+            <div style="width:34px"></div>
+          </div>
+
+          <div style="position:sticky;top:0;z-index:12;background:rgba(11,31,23,0.96);padding:12px 18px;border-bottom:1px solid rgba(245,243,236,0.08)">
+            <div style="display:flex;align-items:center;gap:11px">
+              <div style="flex:1;height:7px;border-radius:999px;background:rgba(245,243,236,0.10);overflow:hidden">
+                <div style="{{ progressStyle }}"></div>
+              </div>
+              <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:12px;color:#F0B429">{{ filledCount }}/11</span>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:7px;padding:13px 18px 10px;overflow-x:auto">
+            <sc-for list="{{ formationChips }}" as="f" hint-placeholder-count="4">
+              <div onClick="{{ f.onClick }}" style="{{ f.style }}">{{ f.label }}</div>
+            </sc-for>
+          </div>
+
+          <div style="padding:0 18px">
+            <div style="position:relative;aspect-ratio:2/3;border-radius:14px;background:repeating-linear-gradient(90deg,#0E2A1F 0,#0E2A1F 28px,#103020 28px,#103020 56px);box-shadow:inset 0 0 0 1.5px rgba(245,243,236,0.16),0 10px 30px rgba(0,0,0,0.4);overflow:hidden">
+              <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% -6%,rgba(245,243,236,0.18),rgba(11,31,23,0) 58%)"></div>
+              <div style="position:absolute;inset:12px;border:1.5px solid rgba(245,243,236,0.18);border-radius:4px"></div>
+              <div style="position:absolute;left:0;right:0;top:50%;height:1.5px;background:rgba(245,243,236,0.18)"></div>
+              <div style="position:absolute;left:50%;top:50%;width:84px;height:84px;margin:-42px 0 0 -42px;border:1.5px solid rgba(245,243,236,0.18);border-radius:999px"></div>
+              <div style="position:absolute;left:50%;bottom:12px;width:132px;height:52px;margin-left:-66px;border:1.5px solid rgba(245,243,236,0.18);border-bottom:none"></div>
+              <div style="position:absolute;left:50%;top:12px;width:132px;height:52px;margin-left:-66px;border:1.5px solid rgba(245,243,236,0.18);border-top:none"></div>
+              <sc-for list="{{ pitchSlots }}" as="s" hint-placeholder-count="11">
+                <div style="{{ s.wrapStyle }}" onClick="{{ s.onClick }}" onMouseDown="{{ s.onPressStart }}" onMouseUp="{{ s.onPressEnd }}" onMouseLeave="{{ s.onPressEnd }}" onTouchStart="{{ s.onPressStart }}" onTouchEnd="{{ s.onPressEnd }}">
+                  <div style="{{ s.jerseyStyle }}">{{ s.number }}</div>
+                  <span style="{{ s.nameStyle }}">{{ s.name }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="padding:16px 18px 24px">
+            <div style="{{ saveStyle }}">{{ saveLabel }}</div>
+            <p style="margin:10px 0 0;text-align:center;font-size:11px;color:#8A9A90">Formation is cosmetic — only who you pick scores. Long-press a shirt for form.</p>
+          </div>
+
+          <sc-if value="{{ drawerOpen }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute;inset:0;background:rgba(7,21,15,0.72);border-radius:30px;display:flex;align-items:flex-end;z-index:30">
+              <div style="width:100%;height:62%;background:#132A20;border-radius:22px 22px 30px 30px;box-shadow:0 -14px 44px rgba(0,0,0,0.55);display:flex;flex-direction:column" data-anim="sheet">
+                <div style="padding:14px 18px 10px">
+                  <div style="width:38px;height:4px;border-radius:2px;background:rgba(245,243,236,0.2);margin:0 auto 14px"></div>
+                  <div style="display:flex;align-items:center;justify-content:space-between">
+                    <p style="margin:0;font-family:Oswald,sans-serif;font-weight:600;font-size:17px;text-transform:uppercase">{{ drawerTitle }}</p>
+                    <div onClick="{{ onCloseDrawer }}" style="font-size:18px;color:#8A9A90;padding:2px 6px;cursor:pointer">×</div>
+                  </div>
+                  <input value="{{ query }}" onChange="{{ onQuery }}" placeholder="Search the squad" style="margin-top:11px;width:100%;box-sizing:border-box;background:#0B1F17;border:none;box-shadow:inset 0 0 0 1px rgba(245,243,236,0.12);border-radius:9px;padding:11px 12px;color:#F5F3EC;font-size:13px;outline:none"></input>
+                  <sc-if value="{{ canClear }}" hint-placeholder-val="{{ false }}">
+                    <div onClick="{{ onClearSlot }}" style="margin-top:9px;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border-radius:9px;cursor:pointer;min-height:44px;box-sizing:border-box;color:#C8102E;box-shadow:inset 0 0 0 1px rgba(200,16,46,0.4);font-family:Oswald,sans-serif;font-weight:600;font-size:13px;letter-spacing:0.06em;text-transform:uppercase">{{ clearLabel }}</div>
+                  </sc-if>
+                </div>
+                <div style="flex:1;overflow-y:auto;padding:4px 10px 18px">
+                  <sc-for list="{{ drawerGroups }}" as="g" hint-placeholder-count="3">
+                    <div style="margin-bottom:8px">
+                      <p style="margin:10px 8px 5px;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.18em;text-transform:uppercase;color:#8A9A90">{{ g.label }}</p>
+                      <sc-for list="{{ g.players }}" as="p" hint-placeholder-count="5">
+                        <div onClick="{{ p.onClick }}" style="{{ p.rowStyle }}">
+                          <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#6CABDD;width:24px">{{ p.number }}</span>
+                          <span style="flex:1;font-size:13.5px;font-weight:500">{{ p.name }}</span>
+                          <span style="{{ p.flagStyle }}">{{ p.flag }}</span>
+                          <span style="display:flex;gap:3px">
+                            <sc-for list="{{ p.form }}" as="d" hint-placeholder-count="5">
+                              <span style="{{ d.style }}"></span>
+                            </sc-for>
+                          </span>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ statOpen }}" hint-placeholder-val="{{ false }}">
+            <div onClick="{{ onCloseStat }}" style="position:absolute;inset:0;background:rgba(7,21,15,0.82);border-radius:30px;display:flex;align-items:center;justify-content:center;z-index:40;padding:28px">
+              <div style="width:100%;background:#132A20;border-radius:18px;padding:20px;box-shadow:0 20px 50px rgba(0,0,0,0.6),inset 0 0 0 1px rgba(108,171,221,0.3)" data-anim="pop">
+                <div style="display:flex;align-items:center;gap:12px">
+                  <div style="width:44px;height:44px;border-radius:10px;background:#6CABDD;color:#0B1F17;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:16px">{{ statNumber }}</div>
+                  <div>
+                    <p style="margin:0;font-family:Oswald,sans-serif;font-weight:600;font-size:19px;text-transform:uppercase;line-height:1.1">{{ statName }}</p>
+                    <p style="margin:3px 0 0;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.12em;color:#8A9A90">{{ statPosition }}</p>
+                  </div>
+                </div>
+                <div style="margin-top:16px;display:flex;align-items:center;justify-content:space-between;padding-bottom:12px;border-bottom:1px solid rgba(245,243,236,0.10)">
+                  <span style="font-size:12px;color:#8A9A90">Started last 5</span>
+                  <span style="display:flex;gap:5px">
+                    <sc-for list="{{ statForm }}" as="d" hint-placeholder-count="5">
+                      <span style="{{ d.style }}"></span>
+                    </sc-for>
+                  </span>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid rgba(245,243,236,0.10)">
+                  <span style="font-size:12px;color:#8A9A90">Goals / assists</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:13px">{{ statGA }}</span>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid rgba(245,243,236,0.10)">
+                  <span style="font-size:12px;color:#8A9A90">Last appearance</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:12px">{{ statLast }}</span>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 0">
+                  <span style="font-size:12px;color:#8A9A90">Status</span>
+                  <span style="{{ statFlagStyle }}">{{ statFlag }}</span>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isScored }}" hint-placeholder-val="{{ false }}">
+        <div style="position:relative;background:#0B1F17;border-radius:30px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,0.6);min-height:800px">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 18px 14px;border-bottom:1px solid rgba(245,243,236,0.08)">
+            <div onClick="{{ goHome }}" style="font-size:13px;color:#8A9A90;cursor:pointer">← Back</div>
+            <div style="text-align:center">
+              <p style="margin:0;font-family:Oswald,sans-serif;font-weight:600;font-size:15px;text-transform:uppercase">Man City 2–1 Arsenal</p>
+              <p style="margin:2px 0 0;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.1em;color:#8A9A90">SCORED · MATCHDAY 4</p>
+            </div>
+            <div style="width:34px"></div>
+          </div>
+          <div style="padding:18px 18px 10px;display:flex;align-items:center;justify-content:center;gap:12px">
+            <div style="text-align:center">
+              <p style="margin:0;font-family:Oswald,sans-serif;font-weight:600;font-size:38px;color:#F0B429;line-height:1">+7</p>
+              <p style="margin:2px 0 0;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.14em;color:#8A9A90">POINTS</p>
+            </div>
+            <div style="width:1px;height:40px;background:rgba(245,243,236,0.12)"></div>
+            <div style="text-align:center">
+              <p style="margin:0;font-family:Oswald,sans-serif;font-weight:600;font-size:38px;line-height:1">7<span style="font-size:20px;color:#8A9A90">/11</span></p>
+              <p style="margin:2px 0 0;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.14em;color:#8A9A90">CORRECT</p>
+            </div>
+          </div>
+          <p style="margin:0;padding:0 18px;text-align:center;font-size:12px;color:#8A9A90">Four off. Tap a greyed shirt to see who started instead.</p>
+          <div style="padding:14px 18px 0">
+            <div style="position:relative;aspect-ratio:2/3;border-radius:14px;background:repeating-linear-gradient(90deg,#0E2A1F 0,#0E2A1F 28px,#103020 28px,#103020 56px);box-shadow:inset 0 0 0 1.5px rgba(245,243,236,0.16);overflow:hidden">
+              <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% -6%,rgba(245,243,236,0.16),rgba(11,31,23,0) 58%)"></div>
+              <div style="position:absolute;inset:12px;border:1.5px solid rgba(245,243,236,0.18);border-radius:4px"></div>
+              <div style="position:absolute;left:0;right:0;top:50%;height:1.5px;background:rgba(245,243,236,0.18)"></div>
+              <div style="position:absolute;left:50%;top:50%;width:84px;height:84px;margin:-42px 0 0 -42px;border:1.5px solid rgba(245,243,236,0.18);border-radius:999px"></div>
+              <sc-for list="{{ scoredSlots }}" as="s" hint-placeholder-count="11">
+                <div style="{{ s.wrapStyle }}" onClick="{{ s.onClick }}">
+                  <div style="{{ s.jerseyStyle }}">{{ s.number }}</div>
+                  <span style="{{ s.nameStyle }}">{{ s.name }}</span>
+                  <span style="{{ s.subStyle }}">{{ s.sub }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="padding:18px">
+            <div onClick="{{ goTakeover }}" style="text-align:center;font-family:Oswald,sans-serif;font-weight:600;font-size:14px;letter-spacing:0.06em;text-transform:uppercase;padding:14px;border-radius:11px;box-shadow:inset 0 0 0 1px rgba(245,243,236,0.18);cursor:pointer">See the Perfect XI moment</div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isTakeover }}" hint-placeholder-val="{{ false }}">
+        <div style="position:relative;background:#0B1F17;border-radius:30px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,0.6);height:844px">
+          <div style="position:absolute;top:-90px;left:-70px;width:540px;height:400px;background:radial-gradient(ellipse at 50% 40%,rgba(240,180,41,0.18),rgba(11,31,23,0) 70%)"></div>
+          <div data-anim-confetti="1" style="position:absolute;left:28px;top:0;width:7px;height:14px;background:#F0B429;animation:mdxiFall 7s linear infinite;animation-delay:0.2s"></div>
+          <div data-anim-confetti="1" style="position:absolute;left:92px;top:0;width:6px;height:12px;background:#6CABDD;animation:mdxiFall 7s linear infinite;animation-delay:0.6s"></div>
+          <div data-anim-confetti="1" style="position:absolute;left:152px;top:0;width:7px;height:13px;background:#F5F3EC;animation:mdxiFall 7s linear infinite;animation-delay:0.35s"></div>
+          <div data-anim-confetti="1" style="position:absolute;left:224px;top:0;width:6px;height:14px;background:#F0B429;animation:mdxiFall 7s linear infinite;animation-delay:0.85s"></div>
+          <div data-anim-confetti="1" style="position:absolute;left:288px;top:0;width:7px;height:12px;background:#6CABDD;animation:mdxiFall 7s linear infinite;animation-delay:0.5s"></div>
+          <div data-anim-confetti="1" style="position:absolute;left:344px;top:0;width:6px;height:13px;background:#F0B429;animation:mdxiFall 7s linear infinite;animation-delay:1s"></div>
+          <div data-anim-confetti="1" style="position:absolute;left:60px;top:0;width:5px;height:11px;background:#F5F3EC;animation:mdxiFall 7s linear infinite;animation-delay:1.25s"></div>
+          <div data-anim-confetti="1" style="position:absolute;left:260px;top:0;width:5px;height:11px;background:#F0B429;animation:mdxiFall 7s linear infinite;animation-delay:1.5s"></div>
+
+          <div style="position:relative;height:100%;display:flex;flex-direction:column;padding:44px 22px 26px">
+            <div style="text-align:center">
+              <p style="margin:0;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.2em;color:#8A9A90;text-transform:uppercase">Matchday 4 · Final</p>
+              <p style="margin:6px 0 0;font-family:Oswald,sans-serif;font-weight:600;font-size:19px;text-transform:uppercase">Man City <span style="color:#8A9A90">2–1</span> Arsenal</p>
+            </div>
+            <div style="position:relative;margin-top:20px;background:#132A20;border-radius:14px;padding:18px 16px 16px;box-shadow:0 14px 40px rgba(0,0,0,0.5),inset 0 0 0 1px rgba(108,171,221,0.22)">
+              <div style="display:flex;align-items:center;justify-content:space-between;padding-bottom:11px;border-bottom:1px solid rgba(245,243,236,0.12)">
+                <span style="font-family:Oswald,sans-serif;font-weight:600;font-size:12px;letter-spacing:0.2em;text-transform:uppercase;color:#8A9A90">Your Team Sheet</span>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#6CABDD">4-2-3-1</span>
+              </div>
+              <div style="display:flex;flex-direction:column;margin-top:4px">
+                <sc-for list="{{ takeoverRows }}" as="r" hint-placeholder-count="11">
+                  <div style="{{ r.style }}" data-anim="row">
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#8A9A90;width:24px">{{ r.pos }}</span>
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#6CABDD;width:20px">{{ r.number }}</span>
+                    <span style="flex:1;font-size:13.5px;font-weight:500">{{ r.name }}</span>
+                    <span style="color:#F0B429;font-size:13px">✓</span>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="position:absolute;left:50%;top:52%;width:200px;height:200px;margin:-100px 0 0 -100px;border:3px solid rgba(240,180,41,0.6);border-radius:999px;animation:mdxiShock 7s ease-out infinite;pointer-events:none" data-anim="shock"></div>
+              <div data-anim-stamp="1" style="position:absolute;left:50%;top:52%;margin-left:-118px;margin-top:-40px;width:236px;animation:mdxiStamp 7s cubic-bezier(0.2,0.9,0.3,1) infinite;pointer-events:none">
+                <div style="border:4px solid #F0B429;border-radius:8px;padding:10px 6px;text-align:center;background:rgba(11,31,23,0.88);box-shadow:0 0 34px rgba(240,180,41,0.32)">
+                  <p style="margin:0;font-family:Oswald,sans-serif;font-weight:700;font-size:36px;line-height:1;letter-spacing:0.04em;text-transform:uppercase;color:#F0B429">Perfect XI</p>
+                  <p style="margin:5px 0 0;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.24em;color:#F5F3EC">12 SEP 2026 · 11/11</p>
+                </div>
+              </div>
+            </div>
+            <div style="margin-top:18px;display:flex;align-items:center;justify-content:center;gap:9px;animation:mdxiFade 7s ease-out infinite" data-anim="pts">
+              <span style="font-family:Oswald,sans-serif;font-weight:600;font-size:26px;color:#F0B429">+</span>
+              <div style="height:42px;overflow:hidden">
+                <div style="animation:mdxiTick 7s steps(14,end) infinite" data-anim-tick="1">
+                  <sc-for list="{{ tickDigits }}" as="d" hint-placeholder-count="15">
+                    <div style="height:42px;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:34px;line-height:42px;color:#F0B429">{{ d.n }}</div>
+                  </sc-for>
+                </div>
+              </div>
+              <span style="font-family:Oswald,sans-serif;font-weight:600;font-size:13px;letter-spacing:0.12em;text-transform:uppercase;color:#8A9A90;padding-top:12px">pts added</span>
+            </div>
+            <div style="flex:1"></div>
+            <div style="display:flex;flex-direction:column;gap:9px;animation:mdxiFade 7s ease-out infinite;animation-delay:0.25s" data-anim="cta">
+              <div style="display:flex;align-items:center;justify-content:center;gap:9px;padding-bottom:4px">
+                <span style="width:17px;height:17px;border-radius:999px;background:linear-gradient(145deg,#C6803F,#8C5122);display:block"></span>
+                <span style="font-size:12px;color:#8A9A90">4th Perfect XI — <span style="color:#F5F3EC">one more for Silver</span></span>
+              </div>
+              <div onClick="{{ goShare }}" style="background:linear-gradient(180deg,#FFE28F 0%,#F7C63C 44%,#DE9C10 100%);color:#0B1F17;text-align:center;font-family:Oswald,sans-serif;font-weight:600;font-size:15px;letter-spacing:0.07em;text-transform:uppercase;padding:15px;border-radius:11px;box-shadow:0 8px 22px rgba(240,180,41,0.3);cursor:pointer">Share this team sheet</div>
+              <div onClick="{{ goHome }}" style="text-align:center;font-size:13px;color:#8A9A90;padding:6px;cursor:pointer">Back to matchday</div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isShare }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:22px">
+          <div>
+            <p style="margin:0 0 10px;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.18em;color:#8A9A90;text-transform:uppercase">Story · 9:16</p>
+            <div style="width:100%;aspect-ratio:9/16;border-radius:18px;overflow:hidden;position:relative;background:repeating-linear-gradient(90deg,#0E2A1F 0,#0E2A1F 30px,#103020 30px,#103020 60px);box-shadow:0 24px 60px rgba(0,0,0,0.55)">
+              <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% 16%,rgba(240,180,41,0.26),rgba(11,31,23,0) 62%)"></div>
+              <div style="position:relative;height:100%;display:flex;flex-direction:column;align-items:center;padding:34px 26px 26px;box-sizing:border-box">
+                <div style="display:flex;align-items:center;gap:9px">
+                  <div style="width:30px;height:30px;border-radius:999px;background:#6CABDD;color:#0B1F17;display:flex;align-items:center;justify-content:center;font-family:Oswald,sans-serif;font-weight:700;font-size:11px">MCI</div>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.14em;color:#F5F3EC">@EDUONYIA</span>
+                </div>
+                <p style="margin:22px 0 0;font-family:Oswald,sans-serif;font-weight:700;font-size:44px;line-height:0.95;text-transform:uppercase;text-align:center;color:#F5F3EC;text-shadow:0 0 30px rgba(240,180,41,0.5)">Perfect<br><span style="color:#F0B429">XI</span></p>
+                <p style="margin:12px 0 0;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.16em;color:#F5F3EC">MAN CITY 2–1 ARSENAL</p>
+                <div style="position:relative;width:78%;flex:1;margin-top:20px;border-radius:10px;box-shadow:inset 0 0 0 1.5px rgba(245,243,236,0.22)">
+                  <div style="position:absolute;left:50%;top:50%;width:56px;height:56px;margin:-28px 0 0 -28px;border:1.5px solid rgba(245,243,236,0.22);border-radius:999px"></div>
+                  <div style="position:absolute;left:0;right:0;top:50%;height:1.5px;background:rgba(245,243,236,0.22)"></div>
+                  <sc-for list="{{ shareDots }}" as="d" hint-placeholder-count="11">
+                    <span style="{{ d.style }}"></span>
+                  </sc-for>
+                </div>
+                <div style="margin-top:18px;display:flex;align-items:center;gap:10px">
+                  <span style="width:20px;height:20px;border-radius:999px;background:linear-gradient(145deg,#C6803F,#8C5122);display:block"></span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.14em;color:#8A9A90">BRONZE · 4 PERFECT XI</span>
+                </div>
+                <div style="margin-top:16px;display:flex;align-items:center;justify-content:space-between;width:100%;padding-top:14px;border-top:1px solid rgba(245,243,236,0.14)">
+                  <div style="display:flex;align-items:baseline;gap:5px">
+                    <span style="font-family:Oswald,sans-serif;font-weight:700;font-size:17px;letter-spacing:0.05em;text-transform:uppercase">Matchday</span>
+                    <span style="font-family:Oswald,sans-serif;font-weight:700;font-size:17px;letter-spacing:0.05em;color:#F0B429">XI</span>
+                  </div>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.12em;color:#8A9A90">MATCHDAY-XI.APP</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <p style="margin:0 0 10px;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.18em;color:#8A9A90;text-transform:uppercase">Square · 1:1</p>
+            <div style="width:100%;aspect-ratio:1/1;border-radius:18px;overflow:hidden;position:relative;background:repeating-linear-gradient(90deg,#0E2A1F 0,#0E2A1F 30px,#103020 30px,#103020 60px);box-shadow:0 24px 60px rgba(0,0,0,0.55)">
+              <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% 24%,rgba(240,180,41,0.28),rgba(11,31,23,0) 66%)"></div>
+              <div style="position:relative;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:26px;box-sizing:border-box">
+                <div style="display:flex;align-items:center;gap:9px">
+                  <div style="width:28px;height:28px;border-radius:999px;background:#6CABDD;color:#0B1F17;display:flex;align-items:center;justify-content:center;font-family:Oswald,sans-serif;font-weight:700;font-size:10px">MCI</div>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.14em;color:#F5F3EC">@EDUONYIA</span>
+                </div>
+                <p style="margin:16px 0 0;font-family:Oswald,sans-serif;font-weight:700;font-size:54px;line-height:0.92;text-transform:uppercase;text-align:center;text-shadow:0 0 30px rgba(240,180,41,0.5)">Perfect <span style="color:#F0B429">XI</span></p>
+                <p style="margin:10px 0 0;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.16em;color:#F5F3EC">MAN CITY 2–1 ARSENAL · 11/11</p>
+                <div style="margin-top:16px;display:flex;align-items:center;gap:9px">
+                  <span style="width:18px;height:18px;border-radius:999px;background:linear-gradient(145deg,#C6803F,#8C5122);display:block"></span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.12em;color:#8A9A90">BRONZE TIER</span>
+                </div>
+                <div style="position:absolute;left:26px;right:26px;bottom:22px;display:flex;align-items:center;justify-content:space-between">
+                  <div style="display:flex;align-items:baseline;gap:5px">
+                    <span style="font-family:Oswald,sans-serif;font-weight:700;font-size:16px;letter-spacing:0.05em;text-transform:uppercase">Matchday</span>
+                    <span style="font-family:Oswald,sans-serif;font-weight:700;font-size:16px;letter-spacing:0.05em;color:#F0B429">XI</span>
+                  </div>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.12em;color:#8A9A90">MATCHDAY-XI.APP</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isBoard }}" hint-placeholder-val="{{ false }}">
+        <div style="position:relative;background:#0B1F17;border-radius:30px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,0.6);min-height:800px;padding-bottom:150px">
+          <div style="padding:24px 18px 14px">
+            <h1 style="margin:0;font-family:Oswald,sans-serif;font-weight:600;font-size:28px;text-transform:uppercase">Leaderboard</h1>
+            <div onClick="{{ onToggleFilter }}" style="margin-top:14px;background:#132A20;border-radius:11px;padding:13px 14px;display:flex;align-items:center;justify-content:space-between;box-shadow:inset 0 0 0 1px rgba(245,243,236,0.10);cursor:pointer">
+              <div style="display:flex;align-items:center;gap:10px">
+                <div style="{{ filterCrestStyle }}">{{ filterInitials }}</div>
+                <span style="font-family:Oswald,sans-serif;font-weight:500;font-size:15px;text-transform:uppercase">{{ filterLabel }}</span>
+              </div>
+              <span style="font-size:11px;color:#8A9A90">▾</span>
+            </div>
+            <sc-if value="{{ filterOpen }}" hint-placeholder-val="{{ false }}">
+              <div style="margin-top:6px;background:#132A20;border-radius:11px;padding:6px;box-shadow:0 14px 34px rgba(0,0,0,0.5),inset 0 0 0 1px rgba(245,243,236,0.10);max-height:240px;overflow-y:auto">
+                <sc-for list="{{ filterOptions }}" as="o" hint-placeholder-count="8">
+                  <div onClick="{{ o.onClick }}" style="{{ o.style }}">
+                    <div style="{{ o.crestStyle }}">{{ o.initials }}</div>
+                    <span style="font-size:13px">{{ o.label }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+          </div>
+          <div style="padding:0 18px;display:flex;align-items:center;gap:10px;padding-bottom:8px">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.14em;color:#8A9A90;width:34px">RANK</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.14em;color:#8A9A90;flex:1">PLAYER</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.14em;color:#8A9A90">PTS</span>
+          </div>
+          <div style="display:flex;flex-direction:column">
+            <sc-for list="{{ boardRows }}" as="r" hint-placeholder-count="10">
+              <div style="{{ r.rowStyle }}">
+                <span style="{{ r.rankStyle }}">{{ r.rank }}</span>
+                <div style="{{ r.crestStyle }}">{{ r.initials }}</div>
+                <div style="flex:1;min-width:0">
+                  <p style="margin:0;font-size:13.5px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.name }}</p>
+                  <p style="margin:2px 0 0;font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#8A9A90">{{ r.meta }}</p>
+                </div>
+                <span style="{{ r.tierStyle }}"></span>
+                <span style="{{ r.moveStyle }}">{{ r.move }}</span>
+                <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:17px;width:44px;text-align:right">{{ r.points }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(11,31,23,0.97);border-top:2px solid #6CABDD;padding:13px 18px 20px;box-shadow:0 -14px 30px rgba(0,0,0,0.5)">
+            <p style="margin:0 0 8px;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.16em;color:#6CABDD">YOU</p>
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:12px;color:#0B1F17;background:#6CABDD;border-radius:5px;padding:4px 0;width:38px;text-align:center">2418</span>
+              <div style="width:26px;height:26px;border-radius:999px;background:#6CABDD;color:#0B1F17;display:flex;align-items:center;justify-content:center;font-family:Oswald,sans-serif;font-weight:700;font-size:9px">MCI</div>
+              <div style="flex:1;min-width:0">
+                <p style="margin:0;font-size:13.5px;font-weight:500">Edu Onyia</p>
+                <p style="margin:2px 0 0;font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#8A9A90">@eduonyia · 3 PERFECT XI</p>
+              </div>
+              <span style="width:15px;height:15px;border-radius:999px;background:linear-gradient(145deg,#C6803F,#8C5122);display:block"></span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#6CABDD">▲14</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:17px;width:44px;text-align:right;color:#F0B429">184</span>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isIcon }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:26px">
+          <div style="background:#0B1F17;border-radius:20px;padding:24px;box-shadow:inset 0 0 0 1px rgba(245,243,236,0.08)">
+            <p style="margin:0 0 18px;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.18em;color:#8A9A90;text-transform:uppercase">App icon · shield + chalk mark</p>
+            <div style="display:flex;align-items:flex-end;gap:24px;flex-wrap:wrap">
+              <sc-for list="{{ iconSizes }}" as="i" hint-placeholder-count="4">
+                <div style="display:flex;flex-direction:column;align-items:center;gap:9px">
+                  <svg width="{{ i.px }}" height="{{ i.px }}" viewBox="0 0 512 512">
+                    <defs>
+                      <linearGradient id="{{ i.gid }}" x1="0" y1="0" x2="0.6" y2="1">
+                        <stop offset="0%" stop-color="#FFE9A6"></stop>
+                        <stop offset="42%" stop-color="#F7C63C"></stop>
+                        <stop offset="100%" stop-color="#D18E08"></stop>
+                      </linearGradient>
+                    </defs>
+                    <rect width="512" height="512" rx="112" fill="#050B08"></rect>
+                    <path d="M256 86 L396 128 L396 272 C396 368 336 424 256 452 C176 424 116 368 116 272 L116 128 Z" fill="{{ i.fill }}"></path>
+                    <circle cx="256" cy="268" r="86" fill="none" stroke="#F5F3EC" stroke-width="9" opacity="0.42"></circle>
+                    <line x1="140" y1="268" x2="372" y2="268" stroke="#F5F3EC" stroke-width="9" opacity="0.42"></line>
+                    <text x="256" y="308" text-anchor="middle" font-family="Oswald, sans-serif" font-weight="700" font-size="116" fill="#0B1F17" letter-spacing="3">XI</text>
+                  </svg>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#8A9A90">{{ i.px }}</span>
+                </div>
+              </sc-for>
+            </div>
+            <p style="margin:18px 0 0;font-size:12px;color:#8A9A90;text-wrap:pretty">Near-black field (#050B08) so the gold shield carries the whole mark, XI in pitch-green centred on the halfway line inside the centre circle. Chalk lines hold at 42% so the letterforms stay the first thing you read at 48px.</p>
+          </div>
+
+          <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start">
+            <div>
+              <p style="margin:0 0 10px;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.18em;color:#8A9A90;text-transform:uppercase">Splash</p>
+              <div style="width:230px;height:420px;border-radius:26px;background:#0B1F17;position:relative;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.55),inset 0 0 0 1px rgba(245,243,236,0.08);display:flex;flex-direction:column;align-items:center;justify-content:center">
+                <div style="position:absolute;top:-70px;left:-50px;width:330px;height:300px;background:radial-gradient(ellipse at 50% 45%,rgba(240,180,41,0.22),rgba(11,31,23,0) 70%)"></div>
+                <div style="position:relative;display:flex;align-items:baseline;gap:8px;margin-bottom:20px">
+                  <span style="font-family:Oswald,sans-serif;font-weight:700;font-size:30px;letter-spacing:0.05em;text-transform:uppercase;color:#F5F3EC">Matchday</span>
+                  <span style="font-family:Oswald,sans-serif;font-weight:700;font-size:30px;letter-spacing:0.05em;text-transform:uppercase;color:#F0B429">XI</span>
+                </div>
+                <svg width="84" height="84" viewBox="0 0 512 512" style="position:relative">
+                  <defs>
+                    <linearGradient id="splashg" x1="0" y1="0" x2="0.6" y2="1">
+                      <stop offset="0%" stop-color="#FFE9A6"></stop>
+                      <stop offset="42%" stop-color="#F7C63C"></stop>
+                      <stop offset="100%" stop-color="#D18E08"></stop>
+                    </linearGradient>
+                  </defs>
+                  <rect width="512" height="512" rx="112" fill="#050B08"></rect>
+                  <path d="M256 86 L396 128 L396 272 C396 368 336 424 256 452 C176 424 116 368 116 272 L116 128 Z" fill="url(#splashg)"></path>
+                  <circle cx="256" cy="268" r="86" fill="none" stroke="#F5F3EC" stroke-width="9" opacity="0.42"></circle>
+                  <line x1="140" y1="268" x2="372" y2="268" stroke="#F5F3EC" stroke-width="9" opacity="0.42"></line>
+                  <text x="256" y="308" text-anchor="middle" font-family="Oswald, sans-serif" font-weight="700" font-size="116" fill="#0B1F17" letter-spacing="3">XI</text>
+                </svg>
+                <div style="position:relative;text-align:center;margin-top:22px">
+                  <p style="margin:0;font-family:Oswald,sans-serif;font-weight:700;font-size:62px;line-height:0.86;letter-spacing:0.01em;color:#F0B429;text-shadow:0 0 28px rgba(240,180,41,0.4)">YOU</p>
+                  <p style="margin:4px 0 0;font-family:Oswald,sans-serif;font-weight:600;font-size:19px;letter-spacing:0.14em;text-transform:uppercase;color:#F5F3EC">Call the<br>lineup</p>
+                </div>
+              </div>
+            </div>
+            <div style="flex:1;min-width:220px">
+              <p style="margin:0 0 10px;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.18em;color:#8A9A90;text-transform:uppercase">Tab bar marks</p>
+              <div style="background:#0B1F17;border-radius:16px;padding:18px;box-shadow:inset 0 0 0 1px rgba(245,243,236,0.08);display:grid;grid-template-columns:repeat(3,1fr);gap:18px">
+                <sc-for list="{{ iconSet }}" as="k" hint-placeholder-count="6">
+                  <div style="display:flex;flex-direction:column;align-items:center;gap:8px">
+                    <div style="width:40px;height:40px;border-radius:11px;background:#132A20;display:flex;align-items:center;justify-content:center;box-shadow:inset 0 0 0 1px rgba(245,243,236,0.08)">{{ k.icon }}</div>
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:8.5px;letter-spacing:0.1em;color:#8A9A90;text-transform:uppercase">{{ k.label }}</span>
+                  </div>
+                </sc-for>
+              </div>
+              <p style="margin:14px 0 0;font-size:12px;color:#8A9A90;text-wrap:pretty">Solid gold marks with a 1.2px pitch-green outline, 20px box. Filled shapes rather than line icons so they hold their weight against the turf at tab-bar size.</p>
+              <p style="margin:14px 0 0;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.16em;color:#8A9A90;text-transform:uppercase">Streak stages</p>
+              <div style="margin-top:10px;display:flex;gap:16px;align-items:flex-end">
+                <div style="display:flex;flex-direction:column;align-items:center;gap:7px">
+                  <svg width="18" height="23" viewBox="0 0 10 13"><path d="M5 3.5C5 5.4 6.8 5.8 6.8 7.8 6.8 9.6 5.5 11 4 11 2.5 11 1.4 9.8 1.4 8.2 1.4 6 3.9 5.8 5 3.5Z" fill="#8A6A2A"></path></svg>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:8.5px;color:#8A9A90">1–6D</span>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:center;gap:7px">
+                  <svg width="24" height="30" viewBox="0 0 10 13"><path d="M5 1.5C5 4.2 7.2 4.8 7.2 7.6 7.2 10 5.5 11.8 3.9 11.8 2.2 11.8 1 10.2 1 8.4 1 5.4 3.7 5 5 1.5Z" fill="#F0B429"></path></svg>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:8.5px;color:#8A9A90">7–20D</span>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:center;gap:7px">
+                  <svg width="30" height="38" viewBox="0 0 10 13"><path d="M5 0.5C5 3 7.2 3.4 7.2 6.2 7.2 7.4 6.5 8.3 5.6 8.7 6 7.9 5.9 6.9 5.2 6.3 5.3 7.6 4.3 8 3.6 8.8 3 9.5 3 10.6 3.7 11.4 2.1 10.9 1 9.4 1 7.6 1 4.6 4 4.2 5 0.5Z" fill="#FFD65A"></path></svg>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:8.5px;color:#8A9A90">21D+</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isEdge }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div style="background:#132A20;border-radius:16px;padding:20px;box-shadow:inset 0 0 0 1px rgba(245,243,236,0.07)">
+            <p style="margin:0;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.16em;color:#8A9A90;text-transform:uppercase">Fixtures · nothing synced</p>
+            <div style="margin-top:14px;text-align:center;padding:18px 8px">
+              <div style="width:54px;height:54px;margin:0 auto;border-radius:12px;background:repeating-linear-gradient(90deg,#0E2A1F 0,#0E2A1F 8px,#103020 8px,#103020 16px);box-shadow:inset 0 0 0 1.5px rgba(245,243,236,0.16)"></div>
+              <p style="margin:14px 0 0;font-family:Oswald,sans-serif;font-weight:600;font-size:18px;text-transform:uppercase">No fixtures yet</p>
+              <p style="margin:6px 0 0;font-size:12.5px;color:#8A9A90;text-wrap:pretty">The Premier League calendar syncs every morning. Your next City match will appear here as soon as it's published.</p>
+            </div>
+          </div>
+
+          <div style="background:#132A20;border-radius:16px;padding:20px;box-shadow:inset 0 0 0 1px rgba(245,243,236,0.07)">
+            <p style="margin:0;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.16em;color:#8A9A90;text-transform:uppercase">Locked · never submitted</p>
+            <div style="margin-top:14px;display:flex;align-items:center;gap:14px">
+              <div style="width:52px;height:70px;border-radius:8px;background:repeating-linear-gradient(90deg,#0E2A1F 0,#0E2A1F 10px,#103020 10px,#103020 20px);box-shadow:inset 0 0 0 1.5px rgba(245,243,236,0.14);opacity:0.5"></div>
+              <div>
+                <p style="margin:0;font-family:Oswald,sans-serif;font-weight:600;font-size:17px;text-transform:uppercase">You sat this one out</p>
+                <p style="margin:5px 0 0;font-size:12.5px;color:#8A9A90;text-wrap:pretty">Predictions closed two hours before kickoff. Next City match opens Thursday — we'll nudge you.</p>
+              </div>
+            </div>
+          </div>
+
+          <div style="background:#132A20;border-radius:16px;padding:20px;box-shadow:inset 0 0 0 1px rgba(245,243,236,0.07)">
+            <p style="margin:0;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.16em;color:#8A9A90;text-transform:uppercase">Scored · partial</p>
+            <div style="margin-top:14px;display:flex;align-items:center;justify-content:space-between">
+              <div>
+                <p style="margin:0;font-family:Oswald,sans-serif;font-weight:600;font-size:17px;text-transform:uppercase">Seven of eleven</p>
+                <p style="margin:5px 0 0;font-size:12.5px;color:#8A9A90">Rotation caught you out. Tap any miss to see who started.</p>
+              </div>
+              <p style="margin:0;font-family:Oswald,sans-serif;font-weight:600;font-size:34px;color:#F0B429">+7</p>
+            </div>
+          </div>
+
+          <div style="background:#132A20;border-radius:16px;padding:20px;box-shadow:inset 0 0 0 1px rgba(245,243,236,0.07)">
+            <p style="margin:0;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.16em;color:#8A9A90;text-transform:uppercase">Voided fixture</p>
+            <div style="margin-top:14px;display:flex;align-items:center;gap:12px">
+              <span style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.1em;color:#8A9A90;padding:5px 9px;border-radius:5px;box-shadow:inset 0 0 0 1px rgba(245,243,236,0.2)">VOID</span>
+              <div>
+                <p style="margin:0;font-family:Oswald,sans-serif;font-weight:600;font-size:16px;text-transform:uppercase">Match postponed</p>
+                <p style="margin:4px 0 0;font-size:12.5px;color:#8A9A90">No points won or lost, and your streak is safe.</p>
+              </div>
+            </div>
+          </div>
+
+          <div style="background:#132A20;border-radius:16px;padding:20px;box-shadow:inset 0 0 0 1px rgba(245,243,236,0.07)">
+            <p style="margin:0;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.16em;color:#8A9A90;text-transform:uppercase">Leaderboard · no players</p>
+            <div style="margin-top:14px;display:flex;flex-direction:column;gap:7px">
+              <div style="display:flex;align-items:center;gap:10px;opacity:0.4">
+                <span style="width:34px;height:22px;border-radius:5px;background:rgba(245,243,236,0.08);display:block"></span>
+                <span style="flex:1;height:12px;border-radius:3px;background:rgba(245,243,236,0.08);display:block"></span>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;opacity:0.25">
+                <span style="width:34px;height:22px;border-radius:5px;background:rgba(245,243,236,0.08);display:block"></span>
+                <span style="flex:1;height:12px;border-radius:3px;background:rgba(245,243,236,0.08);display:block"></span>
+              </div>
+              <p style="margin:10px 0 0;font-size:12.5px;color:#8A9A90;text-wrap:pretty">Be the first City fan on the board — one prediction puts you on it.</p>
+            </div>
+          </div>
+
+          <div style="background:#132A20;border-radius:16px;padding:20px;box-shadow:inset 0 0 0 1px rgba(240,180,41,0.25)">
+            <p style="margin:0;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.16em;color:#F0B429;text-transform:uppercase">Offline</p>
+            <div style="margin-top:14px">
+              <p style="margin:0;font-family:Oswald,sans-serif;font-weight:600;font-size:17px;text-transform:uppercase">No signal at the ground</p>
+              <p style="margin:5px 0 0;font-size:12.5px;color:#8A9A90;text-wrap:pretty">Your lineup is saved on this phone. It'll submit itself the moment you're back online — as long as that's before the lock.</p>
+              <div style="margin-top:12px;display:flex;align-items:center;gap:8px">
+                <span style="width:7px;height:7px;border-radius:999px;background:#F0B429;display:block"></span>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#8A9A90">1 LINEUP QUEUED</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isDesktop }}" hint-placeholder-val="{{ false }}">
+        <div style="background:#0B1F17;border-radius:18px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,0.6)">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 26px;border-bottom:1px solid rgba(245,243,236,0.09)">
+            <div style="display:flex;align-items:center;gap:26px">
+              <div style="display:flex;align-items:baseline;gap:6px">
+                <span style="font-family:Oswald,sans-serif;font-weight:700;font-size:17px;letter-spacing:0.05em;text-transform:uppercase">Matchday</span>
+                <span style="font-family:Oswald,sans-serif;font-weight:700;font-size:17px;letter-spacing:0.05em;color:#F0B429">XI</span>
+              </div>
+              <div style="display:flex;gap:4px">
+                <span style="font-family:Oswald,sans-serif;font-size:12px;letter-spacing:0.1em;text-transform:uppercase;padding:7px 12px;border-radius:7px;color:#8A9A90">Home</span>
+                <span style="font-family:Oswald,sans-serif;font-size:12px;letter-spacing:0.1em;text-transform:uppercase;padding:7px 12px;border-radius:7px;background:rgba(108,171,221,0.16);color:#6CABDD">Fixtures</span>
+                <span style="font-family:Oswald,sans-serif;font-size:12px;letter-spacing:0.1em;text-transform:uppercase;padding:7px 12px;border-radius:7px;color:#8A9A90">History</span>
+                <span style="font-family:Oswald,sans-serif;font-size:12px;letter-spacing:0.1em;text-transform:uppercase;padding:7px 12px;border-radius:7px;color:#8A9A90">Leaderboards</span>
+                <span style="font-family:Oswald,sans-serif;font-size:12px;letter-spacing:0.1em;text-transform:uppercase;padding:7px 12px;border-radius:7px;color:#8A9A90">Leagues</span>
+                <span style="font-family:Oswald,sans-serif;font-size:12px;letter-spacing:0.1em;text-transform:uppercase;padding:7px 12px;border-radius:7px;color:#8A9A90">Prizes</span>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#F0B429;background:rgba(240,180,41,0.14);padding:6px 10px;border-radius:999px">12D</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:11px;background:rgba(245,243,236,0.08);padding:6px 10px;border-radius:999px">184 PTS</span>
+              <div style="width:30px;height:30px;border-radius:999px;background:#6CABDD;color:#0B1F17;display:flex;align-items:center;justify-content:center;font-family:Oswald,sans-serif;font-weight:700;font-size:11px">MCI</div>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:0">
+            <div style="padding:22px 26px 26px;border-right:1px solid rgba(245,243,236,0.09)">
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <div>
+                  <p style="margin:0;font-family:Oswald,sans-serif;font-weight:600;font-size:22px;text-transform:uppercase">Man City vs Arsenal</p>
+                  <p style="margin:3px 0 0;font-family:'JetBrains Mono',monospace;font-size:10px;color:#8A9A90">SAT 17:30 · ETIHAD</p>
+                </div>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#F0B429;background:rgba(240,180,41,0.12);padding:7px 11px;border-radius:999px">{{ countdown }} TO LOCK</span>
+              </div>
+              <div style="margin-top:14px;display:flex;align-items:center;gap:11px">
+                <div style="flex:1;height:7px;border-radius:999px;background:rgba(245,243,236,0.10);overflow:hidden">
+                  <div style="{{ progressStyle }}"></div>
+                </div>
+                <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:12px;color:#F0B429">{{ filledCount }}/11</span>
+              </div>
+              <div style="margin-top:12px;display:flex;gap:7px">
+                <sc-for list="{{ formationChips }}" as="f" hint-placeholder-count="4">
+                  <div onClick="{{ f.onClick }}" style="{{ f.style }}">{{ f.label }}</div>
+                </sc-for>
+              </div>
+              <div style="margin-top:14px;position:relative;aspect-ratio:3/4;border-radius:14px;background:repeating-linear-gradient(90deg,#0E2A1F 0,#0E2A1F 34px,#103020 34px,#103020 68px);box-shadow:inset 0 0 0 1.5px rgba(245,243,236,0.16);overflow:hidden">
+                <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% -6%,rgba(245,243,236,0.16),rgba(11,31,23,0) 58%)"></div>
+                <div style="position:absolute;inset:14px;border:1.5px solid rgba(245,243,236,0.18);border-radius:4px"></div>
+                <div style="position:absolute;left:0;right:0;top:50%;height:1.5px;background:rgba(245,243,236,0.18)"></div>
+                <div style="position:absolute;left:50%;top:50%;width:96px;height:96px;margin:-48px 0 0 -48px;border:1.5px solid rgba(245,243,236,0.18);border-radius:999px"></div>
+                <sc-for list="{{ pitchSlots }}" as="s" hint-placeholder-count="11">
+                  <div style="{{ s.wrapStyle }}" onClick="{{ s.onClick }}">
+                    <div style="{{ s.jerseyStyle }}">{{ s.number }}</div>
+                    <span style="{{ s.nameStyle }}">{{ s.name }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+
+            <div style="padding:22px 26px 26px;display:flex;flex-direction:column">
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <p style="margin:0;font-family:Oswald,sans-serif;font-weight:600;font-size:16px;letter-spacing:0.14em;text-transform:uppercase;color:#8A9A90">Squad</p>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#8A9A90">{{ drawerTitle }}</span>
+              </div>
+              <input value="{{ query }}" onChange="{{ onQuery }}" placeholder="Search the squad" style="margin-top:12px;width:100%;box-sizing:border-box;background:#132A20;border:none;box-shadow:inset 0 0 0 1px rgba(245,243,236,0.12);border-radius:9px;padding:11px 12px;color:#F5F3EC;font-size:13px;outline:none"></input>
+              <sc-if value="{{ canClear }}" hint-placeholder-val="{{ false }}">
+                <div onClick="{{ onClearSlot }}" style="margin-top:9px;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border-radius:9px;cursor:pointer;min-height:44px;box-sizing:border-box;color:#C8102E;box-shadow:inset 0 0 0 1px rgba(200,16,46,0.4);font-family:Oswald,sans-serif;font-weight:600;font-size:13px;letter-spacing:0.06em;text-transform:uppercase">{{ clearLabel }}</div>
+              </sc-if>
+              <div style="margin-top:10px;flex:1;overflow-y:auto;max-height:560px">
+                <sc-for list="{{ drawerGroups }}" as="g" hint-placeholder-count="3">
+                  <div style="margin-bottom:8px">
+                    <p style="margin:10px 4px 5px;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.18em;text-transform:uppercase;color:#8A9A90">{{ g.label }}</p>
+                    <sc-for list="{{ g.players }}" as="p" hint-placeholder-count="6">
+                      <div onClick="{{ p.onClick }}" style="{{ p.rowStyle }}">
+                        <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#6CABDD;width:24px">{{ p.number }}</span>
+                        <span style="flex:1;font-size:13.5px;font-weight:500">{{ p.name }}</span>
+                        <span style="{{ p.flagStyle }}">{{ p.flag }}</span>
+                        <span style="display:flex;gap:3px">
+                          <sc-for list="{{ p.form }}" as="d" hint-placeholder-count="5">
+                            <span style="{{ d.style }}"></span>
+                          </sc-for>
+                        </span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="{{ saveStyle }}">{{ saveLabel }}</div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;clubAccent&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#6CABDD&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;options&quot;:[&quot;#6CABDD&quot;,&quot;#EF0107&quot;,&quot;#C8102E&quot;,&quot;#132257&quot;],&quot;section&quot;:&quot;Club personalisation&quot;},&quot;defaultFormation&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;4-2-3-1&quot;,&quot;options&quot;:[&quot;4-4-2&quot;,&quot;4-3-3&quot;,&quot;4-2-3-1&quot;,&quot;3-4-3&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Prediction builder&quot;},&quot;emptySlotPulse&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Prediction builder&quot;}}">
+class Component extends DCLogic {
+  state = {
+    screen: "home",
+    formation: null,
+    slots: {},
+    drawer: null,
+    query: "",
+    stat: null,
+    revealed: {},
+    demo: {},
+    club: "MCI",
+    showConfirm: false,
+    showClubSheet: false,
+    filterOpen: false,
+    filter: "Global",
+  };
+
+  ACCENT = "#6CABDD";
+
+  SCREENS = [
+    ["landing", "Landing"],
+    ["onboard", "Onboarding"],
+    ["home", "Home"],
+    ["homenew", "Home · new user"],
+    ["builder", "Builder"],
+    ["scored", "Builder · scored"],
+    ["takeover", "Perfect XI"],
+    ["share", "Share cards"],
+    ["board", "Leaderboard"],
+    ["icon", "Icon & splash"],
+    ["edge", "Edge states"],
+    ["desktop", "Desktop"],
+  ];
+
+  SQUAD = [
+    { id: "p31", n: 31, name: "Ederson", pos: "GOALKEEPER", form: [1,1,1,0,1], ga: "0 / 1", last: "31 AUG", flag: null },
+    { id: "p18", n: 18, name: "Stefan Ortega", pos: "GOALKEEPER", form: [0,0,1,0,0], ga: "0 / 0", last: "24 AUG", flag: null },
+    { id: "p2", n: 2, name: "Kyle Walker", pos: "DEFENDER", form: [1,1,0,1,1], ga: "0 / 2", last: "31 AUG", flag: null },
+    { id: "p3", n: 3, name: "Rúben Dias", pos: "DEFENDER", form: [1,1,1,1,1], ga: "1 / 0", last: "31 AUG", flag: null },
+    { id: "p5", n: 5, name: "John Stones", pos: "DEFENDER", form: [0,1,1,0,1], ga: "1 / 1", last: "31 AUG", flag: null },
+    { id: "p24", n: 24, name: "Joško Gvardiol", pos: "DEFENDER", form: [1,1,1,1,0], ga: "2 / 1", last: "31 AUG", flag: null },
+    { id: "p6", n: 6, name: "Nathan Aké", pos: "DEFENDER", form: [0,0,1,1,0], ga: "0 / 0", last: "24 AUG", flag: "DOUBT" },
+    { id: "p82", n: 82, name: "Rico Lewis", pos: "DEFENDER", form: [0,1,0,1,0], ga: "0 / 1", last: "31 AUG", flag: null },
+    { id: "p16", n: 16, name: "Rodri", pos: "MIDFIELDER", form: [1,1,1,1,1], ga: "1 / 2", last: "31 AUG", flag: null },
+    { id: "p8", n: 8, name: "Mateo Kovačić", pos: "MIDFIELDER", form: [1,0,1,1,1], ga: "2 / 1", last: "31 AUG", flag: null },
+    { id: "p47", n: 47, name: "Phil Foden", pos: "MIDFIELDER", form: [1,1,1,1,1], ga: "4 / 3", last: "31 AUG", flag: null },
+    { id: "p17", n: 17, name: "Kevin De Bruyne", pos: "MIDFIELDER", form: [1,1,0,1,1], ga: "2 / 6", last: "31 AUG", flag: null },
+    { id: "p20", n: 20, name: "Bernardo Silva", pos: "MIDFIELDER", form: [1,1,1,0,1], ga: "3 / 2", last: "31 AUG", flag: null },
+    { id: "p27", n: 27, name: "Matheus Nunes", pos: "MIDFIELDER", form: [0,0,1,0,0], ga: "0 / 0", last: "17 AUG", flag: null },
+    { id: "p9", n: 9, name: "Erling Haaland", pos: "FORWARD", form: [1,1,1,1,1], ga: "9 / 1", last: "31 AUG", flag: null },
+    { id: "p10", n: 10, name: "Jack Grealish", pos: "FORWARD", form: [1,0,1,1,1], ga: "1 / 3", last: "31 AUG", flag: null },
+    { id: "p11", n: 11, name: "Jérémy Doku", pos: "FORWARD", form: [0,1,1,0,1], ga: "2 / 4", last: "31 AUG", flag: null },
+    { id: "p26", n: 26, name: "Savinho", pos: "FORWARD", form: [1,0,0,1,0], ga: "1 / 2", last: "24 AUG", flag: null },
+    { id: "p52", n: 52, name: "Oscar Bobb", pos: "FORWARD", form: [0,0,0,0,0], ga: "0 / 0", last: "—", flag: "OUT" },
+    { id: "p80", n: 80, name: "Jahmai Simpson-Pusey", pos: "DEFENDER", tier: "U21", form: [0,0,0,0,0], ga: "0 / 0", last: "—", flag: null },
+    { id: "p87", n: 87, name: "James McAtee", pos: "MIDFIELDER", tier: "U21", form: [0,0,1,0,0], ga: "1 / 0", last: "17 AUG", flag: null },
+  ];
+
+  LAYOUTS = {
+    "4-4-2": [[92,50],[72,14],[72,38],[72,62],[72,86],[46,14],[46,38],[46,62],[46,86],[18,36],[18,64]],
+    "4-3-3": [[92,50],[72,14],[72,38],[72,62],[72,86],[50,25],[50,50],[50,75],[20,20],[20,50],[20,80]],
+    "4-2-3-1": [[92,50],[74,14],[74,38],[74,62],[74,86],[56,35],[56,65],[36,20],[36,50],[36,80],[16,50]],
+    "3-4-3": [[92,50],[74,25],[74,50],[74,75],[50,14],[50,38],[50,62],[50,86],[20,20],[20,50],[20,80]],
+  };
+
+  CLUBS = [
+    ["Arsenal", "ARS", "#EF0107"], ["Aston Villa", "AVL", "#670E36"], ["Bournemouth", "BOU", "#DA291C"],
+    ["Brentford", "BRE", "#E30613"], ["Brighton", "BHA", "#0057B8"], ["Chelsea", "CHE", "#034694"],
+    ["Crystal Palace", "CRY", "#C4122E"], ["Everton", "EVE", "#003399"], ["Fulham", "FUL", "#000000"],
+    ["Ipswich", "IPS", "#0044A9"], ["Leeds", "LEE", "#FFCD00"], ["Liverpool", "LIV", "#C8102E"],
+    ["Man City", "MCI", "#6CABDD"], ["Man United", "MUN", "#DA291C"], ["Newcastle", "NEW", "#241F20"],
+    ["Nott'm Forest", "NFO", "#DD0000"], ["Sunderland", "SUN", "#EB172B"], ["Tottenham", "TOT", "#132257"],
+  ];
+
+  SCORED = [
+    { n: 31, name: "Ederson", ok: true, real: null },
+    { n: 2, name: "Kyle Walker", ok: true, real: null },
+    { n: 3, name: "Rúben Dias", ok: true, real: null },
+    { n: 5, name: "John Stones", ok: false, real: "Nathan Aké", realN: 6 },
+    { n: 24, name: "Gvardiol", ok: true, real: null },
+    { n: 16, name: "Rodri", ok: true, real: null },
+    { n: 8, name: "Kovačić", ok: false, real: "Rico Lewis", realN: 82 },
+    { n: 47, name: "Foden", ok: true, real: null },
+    { n: 17, name: "De Bruyne", ok: false, real: "Bernardo", realN: 20 },
+    { n: 10, name: "Grealish", ok: false, real: "Doku", realN: 11 },
+    { n: 9, name: "Haaland", ok: true, real: null },
+  ];
+
+  componentWillUnmount() { clearTimeout(this._press); }
+
+  go = (s) => () => this.setState({ screen: s, drawer: null, stat: null, filterOpen: false });
+
+  formDots(arr, size) {
+    const px = size || 5;
+    return arr.map((v, i) => ({
+      key: i,
+      style: `width:${px}px;height:${px}px;border-radius:999px;display:block;background:${v ? "#F0B429" : "rgba(245,243,236,0.18)"}`,
+    }));
+  }
+
+  crest(hex, size, font) {
+    return `width:${size}px;height:${size}px;border-radius:999px;background:${hex};color:${hex === "#FFCD00" ? "#0B1F17" : "#F5F3EC"};display:flex;align-items:center;justify-content:center;font-family:Oswald,sans-serif;font-weight:700;font-size:${font}px;flex-shrink:0`;
+  }
+
+  renderVals() {
+    const st = this.state;
+    const accent = this.props.clubAccent ?? this.ACCENT;
+    const formation = st.formation ?? this.props.defaultFormation ?? "4-2-3-1";
+    const pulse = this.props.emptySlotPulse ?? true;
+    const byId = new Map(this.SQUAD.map((p) => [p.id, p]));
+    const filled = Object.values(st.slots).filter(Boolean).length;
+    const layout = this.LAYOUTS[formation];
+    const used = new Set(Object.values(st.slots).filter(Boolean));
+
+    const navItems = this.SCREENS.map(([key, label]) => ({
+      key,
+      label,
+      onClick: this.go(key),
+      style:
+        "font-family:Oswald,sans-serif;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;padding:6px 11px;border-radius:7px;cursor:pointer;" +
+        (st.screen === key
+          ? "background:#F0B429;color:#0B1F17;font-weight:600"
+          : "color:#8A9A90;box-shadow:inset 0 0 0 1px rgba(245,243,236,0.12)"),
+    }));
+
+    const tabs = [
+      ["home", "Home", '<rect x="2.5" y="3" width="15" height="14" rx="1.5"></rect><line x1="2.5" y1="10" x2="17.5" y2="10"></line><circle cx="10" cy="10" r="3"></circle>'],
+      ["fixtures", "Fixtures", '<circle cx="10" cy="10" r="7"></circle><path d="M10 5.5V10l3 1.8"></path>'],
+      ["history", "History", '<line x1="4" y1="5.5" x2="16" y2="5.5"></line><line x1="4" y1="10" x2="16" y2="10"></line><line x1="4" y1="14.5" x2="11" y2="14.5"></line>'],
+      ["tables", "Tables", '<path d="M6 3h8v4a4 4 0 0 1-8 0V3Z"></path><path d="M6 4.5H3.5V6a2.5 2.5 0 0 0 2.5 2.5"></path><path d="M14 4.5h2.5V6A2.5 2.5 0 0 1 14 8.5"></path><line x1="10" y1="11" x2="10" y2="14.5"></line><line x1="6.5" y1="16.5" x2="13.5" y2="16.5"></line>'],
+      ["leagues", "Leagues", '<path d="M10 2.5 16.5 5v5.5c0 3.6-2.6 6-6.5 7-3.9-1-6.5-3.4-6.5-7V5L10 2.5Z"></path>'],
+      ["prizes", "Prizes", '<path d="M10 1.5C10 5 14 5.6 14 9.8c0 2-1.2 3.6-2.9 4.2.6-1.2.4-2.7-.7-3.6.2 2-1.4 2.6-2.4 3.8-.9 1-.9 2.6.1 3.8C5.6 17.2 4 15 4 12.3 4 7.8 8.5 7.2 10 1.5Z"></path>'],
+    ].map(([key, label, path]) => {
+      const active = key === "home";
+      const color = active ? accent : "#8A9A90";
+      return {
+        key,
+        label,
+        icon: React.createElement("svg", {
+          width: 20, height: 20, viewBox: "0 0 20 20", fill: "none",
+          stroke: color, strokeWidth: 1.5,
+          dangerouslySetInnerHTML: { __html: path },
+        }),
+        iconStyle: "display:flex;align-items:center;justify-content:center",
+        labelStyle: `font-family:Oswald,sans-serif;font-size:9px;letter-spacing:0.06em;text-transform:uppercase;color:${color}`,
+      };
+    });
+
+    const pitchSlots = layout.map(([top, left], i) => {
+      const p = st.slots[i] ? byId.get(st.slots[i]) : null;
+      const empty = !p;
+      return {
+        key: i,
+        number: p ? String(p.n) : "",
+        name: p ? p.name.split(" ").slice(-1)[0] : i === 0 ? "GK" : "Pick",
+        wrapStyle: `position:absolute;top:${top}%;left:${left}%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;transition:top 340ms cubic-bezier(0.3,0.8,0.3,1),left 340ms cubic-bezier(0.3,0.8,0.3,1);user-select:none`,
+        jerseyStyle: empty
+          ? `width:40px;height:40px;border-radius:11px;display:flex;align-items:center;justify-content:center;outline:2px solid ${accent};outline-offset:-2px;background:rgba(245,243,236,0.05);${pulse ? `animation:mdxiPulse 2.4s ease-out infinite;animation-delay:${i * 90}ms` : ""}`
+          : `width:40px;height:40px;border-radius:11px;display:flex;align-items:center;justify-content:center;background:${accent};color:#0B1F17;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:14px;box-shadow:0 4px 12px rgba(0,0,0,0.35);animation:mdxiPop 260ms cubic-bezier(0.2,0.9,0.3,1)`,
+        nameStyle: empty
+          ? "font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.08em;color:rgba(245,243,236,0.7);background:rgba(11,31,23,0.6);padding:2px 5px;border-radius:4px"
+          : "font-size:10px;font-weight:500;color:#F5F3EC;background:rgba(11,31,23,0.75);padding:2px 6px;border-radius:4px;max-width:76px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap",
+        onClick: () => this.setState({ drawer: i, query: "" }),
+        onPressStart: () => {
+          clearTimeout(this._press);
+          if (!p) return;
+          this._press = setTimeout(() => this.setState({ stat: p.id }), 380);
+        },
+        onPressEnd: () => clearTimeout(this._press),
+      };
+    });
+
+    const drawerOpen = st.drawer !== null;
+    const q = st.query.trim().toLowerCase();
+    const pool = this.SQUAD.filter((p) => {
+      if (used.has(p.id) && st.slots[st.drawer] !== p.id) return false;
+      if (st.drawer === 0) return p.pos === "GOALKEEPER";
+      if (st.drawer !== null && p.pos === "GOALKEEPER") return false;
+      return true;
+    }).filter((p) => !q || p.name.toLowerCase().includes(q) || String(p.n) === q);
+
+    const groupOf = (label, list) => ({
+      label,
+      players: list.map((p) => ({
+        key: p.id,
+        number: String(p.n),
+        name: p.name,
+        flag: p.flag || "",
+        flagStyle: p.flag
+          ? `font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:0.1em;padding:2px 5px;border-radius:4px;margin-right:6px;color:${p.flag === "OUT" ? "#0B1F17" : "#F0B429"};background:${p.flag === "OUT" ? "#C8102E" : "rgba(240,180,41,0.16)"}`
+          : "display:none",
+        form: this.formDots(p.form),
+        rowStyle: "display:flex;align-items:center;gap:10px;padding:11px 8px;border-radius:9px;cursor:pointer;min-height:44px;box-sizing:border-box",
+        onClick: () => this.setState((s) => ({ slots: { ...s.slots, [s.drawer]: p.id }, drawer: null, query: "" })),
+      })),
+    });
+
+    const senior = pool.filter((p) => p.tier !== "U21");
+    const u21 = pool.filter((p) => p.tier === "U21");
+    const drawerGroups = [];
+    if (st.drawer === 0) {
+      if (senior.length) drawerGroups.push(groupOf("Goalkeepers", senior));
+    } else {
+      [["Defenders", "DEFENDER"], ["Midfielders", "MIDFIELDER"], ["Forwards", "FORWARD"]].forEach(([label, pos]) => {
+        const list = senior.filter((p) => p.pos === pos);
+        if (list.length) drawerGroups.push(groupOf(label, list));
+      });
+    }
+    if (u21.length) drawerGroups.push(groupOf("Under 21", u21));
+
+    const statP = st.stat ? byId.get(st.stat) : null;
+
+    const scoredSlots = this.LAYOUTS["4-2-3-1"].map(([top, left], i) => {
+      const s = this.SCORED[i];
+      const shown = !s.ok && st.revealed[i];
+      return {
+        key: i,
+        number: String(shown ? s.realN : s.n),
+        name: shown ? s.real : s.name,
+        sub: shown ? "STARTED" : !s.ok ? "TAP" : "",
+        wrapStyle: `position:absolute;top:${top}%;left:${left}%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:4px;cursor:${s.ok ? "default" : "pointer"};user-select:none`,
+        jerseyStyle: s.ok
+          ? `width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;background:${accent};color:#0B1F17;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:13px;box-shadow:0 0 0 2px #F0B429,0 4px 12px rgba(0,0,0,0.35)`
+          : shown
+          ? "width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;background:#F5F3EC;color:#0B1F17;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,0.35);animation:mdxiPop 240ms ease-out"
+          : "width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;background:rgba(245,243,236,0.10);color:#8A9A90;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:13px;box-shadow:inset 0 0 0 1px rgba(245,243,236,0.18)",
+        nameStyle: `font-size:10px;font-weight:500;color:${s.ok || shown ? "#F5F3EC" : "#8A9A90"};background:rgba(11,31,23,0.75);padding:2px 6px;border-radius:4px;max-width:78px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap`,
+        subStyle: shown
+          ? "font-family:'JetBrains Mono',monospace;font-size:7.5px;letter-spacing:0.14em;color:#F0B429"
+          : !s.ok
+          ? "font-family:'JetBrains Mono',monospace;font-size:7.5px;letter-spacing:0.14em;color:rgba(245,243,236,0.35)"
+          : "display:none",
+        onClick: s.ok ? () => {} : () => this.setState((p) => ({ revealed: { ...p.revealed, [i]: !p.revealed[i] } })),
+      };
+    });
+
+    const clubTiles = this.CLUBS.map(([name, short, hex]) => {
+      const sel = st.club === short;
+      return {
+        key: short,
+        short: name,
+        initials: short,
+        onClick: () => this.setState({ club: short }),
+        style: `display:flex;flex-direction:column;align-items:center;gap:8px;padding:13px 6px;border-radius:12px;cursor:pointer;min-height:44px;box-sizing:border-box;transition:box-shadow 160ms,background 160ms;background:${sel ? hex + "24" : "#132A20"};box-shadow:inset 0 0 0 ${sel ? "2px " + hex : "1px rgba(245,243,236,0.07)"}`,
+        crestStyle: this.crest(hex, 34, 11),
+      };
+    });
+
+    const selectedClub = this.CLUBS.find((c) => c[1] === st.club);
+
+    const boardData = [
+      ["Kemi A.", "@kemiruns", "ARS", "#EF0107", 1, 412, 11, "gold", "▲2"],
+      ["Tobi O.", "@tobio", "LIV", "#C8102E", 2, 397, 9, "silver", "▼1"],
+      ["Danny R.", "@dannyr", "MCI", "#6CABDD", 3, 381, 8, "silver", "▲4"],
+      ["Priya S.", "@priyas", "CHE", "#034694", 4, 366, 6, "silver", "—"],
+      ["Marcus B.", "@mbee", "MUN", "#DA291C", 5, 351, 5, "silver", "▼2"],
+      ["Ada N.", "@adan", "AVL", "#670E36", 6, 338, 4, "bronze", "▲1"],
+      ["Femi K.", "@femik", "TOT", "#132257", 7, 327, 3, "bronze", "▲6"],
+      ["Josh W.", "@joshw", "NEW", "#241F20", 8, 319, 2, "bronze", "▼3"],
+      ["Ife A.", "@ifea", "BHA", "#0057B8", 9, 308, 2, "bronze", "—"],
+      ["Sam T.", "@samt", "EVE", "#003399", 10, 296, 1, "bronze", "▲3"],
+    ];
+    const tierFill = { gold: "linear-gradient(145deg,#FFF0BE,#F7C63C 55%,#D99A12)", silver: "linear-gradient(145deg,#E6E8E3,#9AA39C)", bronze: "linear-gradient(145deg,#C6803F,#8C5122)" };
+    const boardRows = boardData
+      .filter((r) => st.filter === "Global" || r[2] === st.filter)
+      .map((r) => ({
+        key: r[1],
+        rank: String(r[4]),
+        initials: r[2],
+        name: r[0],
+        meta: `${r[1].toUpperCase()} · ${r[6]} PERFECT XI`,
+        points: String(r[5]),
+        move: r[8],
+        rowStyle: "display:flex;align-items:center;gap:10px;padding:11px 18px;border-top:1px solid rgba(245,243,236,0.07)",
+        rankStyle: `font-family:'JetBrains Mono',monospace;font-weight:700;font-size:12px;width:34px;text-align:center;padding:4px 0;border-radius:5px;flex-shrink:0;${r[4] <= 3 ? "background:rgba(240,180,41,0.16);color:#F0B429" : "background:rgba(245,243,236,0.07);color:#8A9A90"}`,
+        crestStyle: this.crest(r[3], 26, 9),
+        tierStyle: `width:15px;height:15px;border-radius:999px;display:block;flex-shrink:0;background:${tierFill[r[7]]}`,
+        moveStyle: `font-family:'JetBrains Mono',monospace;font-size:10px;width:26px;text-align:right;color:${r[8].startsWith("▲") ? "#6CABDD" : r[8].startsWith("▼") ? "#8A9A90" : "#8A9A90"}`,
+      }));
+
+    const filterOptions = [["Global", "ALL", "#8A9A90"]].concat(this.CLUBS.map((c) => [c[0], c[1], c[2]])).map(([label, short, hex]) => ({
+      key: short,
+      label,
+      initials: short,
+      crestStyle: this.crest(hex, 24, 8),
+      onClick: () => this.setState({ filter: short === "ALL" ? "Global" : short, filterOpen: false }),
+      style: "display:flex;align-items:center;gap:10px;padding:10px;border-radius:8px;cursor:pointer;min-height:44px;box-sizing:border-box",
+    }));
+    const filterClub = this.CLUBS.find((c) => c[1] === st.filter);
+
+    const demoFilled = Object.keys(st.demo).length;
+    const demoSlots = this.LAYOUTS["4-4-2"].map(([top, left], i) => ({
+      key: i,
+      mark: st.demo[i] ? "✓" : "",
+      style: `position:absolute;top:${top}%;left:${left}%;transform:translate(-50%,-50%);width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;color:#0B1F17;cursor:pointer;${st.demo[i] ? "background:" + accent : "box-shadow:inset 0 0 0 1.5px rgba(245,243,236,0.35);background:rgba(11,31,23,0.35)"}`,
+      onClick: () => this.setState((s) => ({ demo: { ...s.demo, [i]: !s.demo[i] } })),
+    }));
+
+    return {
+      navItems, tabs, pitchSlots, drawerGroups, scoredSlots, clubTiles, boardRows, filterOptions, demoSlots,
+
+      isLanding: st.screen === "landing",
+      isOnboard: st.screen === "onboard",
+      isHome: st.screen === "home",
+      isHomeNew: st.screen === "homenew",
+      isBuilder: st.screen === "builder",
+      isScored: st.screen === "scored",
+      isTakeover: st.screen === "takeover",
+      isShare: st.screen === "share",
+      isBoard: st.screen === "board",
+      isIcon: st.screen === "icon",
+      isEdge: st.screen === "edge",
+      isDesktop: st.screen === "desktop",
+
+      stageStyle:
+        st.screen === "desktop"
+          ? "width:100%;max-width:1180px;position:relative"
+          : st.screen === "icon" || st.screen === "edge"
+          ? "width:100%;max-width:560px;position:relative"
+          : "width:100%;max-width:390px;position:relative",
+
+      countdown: "04:12:37",
+      filledCount: String(filled),
+      progressStyle: `width:${(filled / 11) * 100}%;height:100%;background:linear-gradient(90deg,#6CABDD,#F0B429);transition:width 320ms ease-out`,
+      saveLabel: filled === 11 ? "Save prediction" : `Pick ${11 - filled} more`,
+      saveStyle:
+        filled === 11
+          ? "background:linear-gradient(180deg,#FFE28F 0%,#F7C63C 44%,#DE9C10 100%);color:#0B1F17;text-align:center;font-family:Oswald,sans-serif;font-weight:600;font-size:15px;letter-spacing:0.06em;text-transform:uppercase;padding:15px;border-radius:11px;box-shadow:0 8px 22px rgba(240,180,41,0.3);cursor:pointer;margin-top:12px"
+          : "background:rgba(245,243,236,0.07);color:#8A9A90;text-align:center;font-family:Oswald,sans-serif;font-weight:600;font-size:15px;letter-spacing:0.06em;text-transform:uppercase;padding:15px;border-radius:11px;margin-top:12px",
+
+      formationChips: ["4-4-2", "4-3-3", "4-2-3-1", "3-4-3"].map((f) => ({
+        key: f,
+        label: f,
+        onClick: () => this.setState({ formation: f }),
+        style: `font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.06em;padding:8px 12px;border-radius:999px;cursor:pointer;white-space:nowrap;${
+          formation === f ? "background:" + accent + ";color:#0B1F17;font-weight:700" : "color:#8A9A90;box-shadow:inset 0 0 0 1px rgba(245,243,236,0.14)"
+        }`,
+      })),
+
+      drawerOpen,
+      drawerTitle: st.drawer === 0 ? "Pick your keeper" : "Pick a player",
+      canClear: st.drawer !== null && !!st.slots[st.drawer],
+      clearLabel: st.drawer !== null && st.slots[st.drawer] ? "Remove " + byId.get(st.slots[st.drawer]).name : "",
+      onClearSlot: () => this.setState((s) => ({ slots: { ...s.slots, [s.drawer]: null }, drawer: null, query: "" })),
+      query: st.query,
+      onQuery: (e) => this.setState({ query: e.target.value }),
+      onCloseDrawer: () => this.setState({ drawer: null, query: "" }),
+
+      statOpen: !!statP,
+      statName: statP ? statP.name : "",
+      statNumber: statP ? String(statP.n) : "",
+      statPosition: statP ? statP.pos + (statP.tier === "U21" ? " · U21" : "") : "",
+      statForm: statP ? this.formDots(statP.form, 8) : [],
+      statGA: statP ? statP.ga : "",
+      statLast: statP ? statP.last : "",
+      statFlag: statP ? (statP.flag === "OUT" ? "Injured" : statP.flag === "DOUBT" ? "Doubtful" : "Available") : "",
+      statFlagStyle: statP
+        ? `font-family:'JetBrains Mono',monospace;font-size:11px;color:${statP.flag === "OUT" ? "#C8102E" : statP.flag === "DOUBT" ? "#F0B429" : "#6CABDD"}`
+        : "",
+      onCloseStat: () => this.setState({ stat: null }),
+
+      showConfirm: st.showConfirm,
+      confirmLabel: st.club ? "Confirm " + (selectedClub ? selectedClub[0] : "") : "Pick a club",
+      confirmStyle: st.club
+        ? "background:linear-gradient(180deg,#FFE28F 0%,#F7C63C 44%,#DE9C10 100%);color:#0B1F17;text-align:center;font-family:Oswald,sans-serif;font-weight:600;font-size:15px;letter-spacing:0.06em;text-transform:uppercase;padding:15px;border-radius:12px;cursor:pointer;box-shadow:0 8px 22px rgba(240,180,41,0.28)"
+        : "background:rgba(245,243,236,0.07);color:#8A9A90;text-align:center;font-family:Oswald,sans-serif;font-weight:600;font-size:15px;letter-spacing:0.06em;text-transform:uppercase;padding:15px;border-radius:12px",
+      confirmClub: selectedClub ? selectedClub[0] : "",
+      confirmInitials: selectedClub ? selectedClub[1] : "",
+      confirmCrestStyle: selectedClub ? this.crest(selectedClub[2], 42, 13) : "",
+      onOpenConfirm: st.club ? () => this.setState({ showConfirm: true }) : () => {},
+      onConfirmClub: () => this.setState({ showConfirm: false, screen: "homenew" }),
+      onCancelConfirm: () => this.setState({ showConfirm: false }),
+
+      showClubSheet: st.showClubSheet,
+      onTapClub: () => this.setState({ showClubSheet: true }),
+      onCloseClubSheet: () => this.setState({ showClubSheet: false }),
+
+      filterOpen: st.filterOpen,
+      onToggleFilter: () => this.setState((s) => ({ filterOpen: !s.filterOpen })),
+      filterLabel: st.filter === "Global" ? "Global" : filterClub ? filterClub[0] + " fans" : "Global",
+      filterInitials: st.filter === "Global" ? "ALL" : st.filter,
+      filterCrestStyle: this.crest(st.filter === "Global" ? "#8A9A90" : filterClub ? filterClub[2] : "#8A9A90", 26, 9),
+
+      demoCount: String(demoFilled),
+      demoHint: demoFilled === 11 ? "Tap to score it against the real XI →" : "Tap the slots to build a lineup",
+
+      takeoverRows: [
+        ["GK", 31, "Ederson"], ["DEF", 2, "Kyle Walker"], ["DEF", 3, "Rúben Dias"], ["DEF", 5, "John Stones"],
+        ["DEF", 24, "Joško Gvardiol"], ["MID", 16, "Rodri"], ["MID", 8, "Mateo Kovačić"], ["MID", 47, "Phil Foden"],
+        ["MID", 17, "Kevin De Bruyne"], ["FWD", 10, "Jack Grealish"], ["FWD", 9, "Erling Haaland"],
+      ].map(([pos, n, name], i) => ({
+        key: i, pos, number: String(n), name,
+        style: `display:flex;align-items:center;gap:10px;padding:6.5px 0;animation:mdxiRow 7s ease-out infinite;animation-delay:${0.05 + i * 0.09}s`,
+      })),
+      tickDigits: Array.from({ length: 15 }, (_, i) => ({ key: i, n: String(i) })),
+
+      shareDots: this.LAYOUTS["4-2-3-1"].map(([top, left], i) => ({
+        key: i,
+        style: `position:absolute;top:${top}%;left:${left}%;transform:translate(-50%,-50%);width:12px;height:12px;border-radius:999px;background:#F0B429;box-shadow:0 0 12px rgba(240,180,41,0.7);display:block`,
+      })),
+
+      iconSizes: [144, 72, 48, 28].map((px, i) => ({
+        key: px, px: String(px), gid: "ig" + i,
+        fill: i === 0 ? "url(#ig0)" : "#FFC63D",
+      })),
+
+      iconSet: [
+        ["Play", '<rect x="2.5" y="3" width="15" height="14" rx="1.5"></rect><line x1="2.5" y1="10" x2="17.5" y2="10"></line><circle cx="10" cy="10" r="3"></circle>'],
+        ["Fixtures", '<circle cx="10" cy="10" r="7"></circle><path d="M10 5.5V10l3 1.8"></path>'],
+        ["History", '<rect x="3.5" y="4" width="13" height="3" rx="1"></rect><rect x="3.5" y="8.5" width="13" height="3" rx="1"></rect><rect x="3.5" y="13" width="8" height="3" rx="1"></rect>'],
+        ["Tables", '<path d="M6 3h8v4a4 4 0 0 1-8 0V3Z"></path><path d="M6 4.5H3.5V6a2.5 2.5 0 0 0 2.5 2.5"></path><path d="M14 4.5h2.5V6A2.5 2.5 0 0 1 14 8.5"></path><path d="M8.8 11h2.4v3.4H8.8Z"></path><rect x="6" y="14.8" width="8" height="2.4" rx="1"></rect>'],
+        ["Leagues", '<path d="M10 2.5 16.5 5v5.5c0 3.6-2.6 6-6.5 7-3.9-1-6.5-3.4-6.5-7V5L10 2.5Z"></path>'],
+        ["Streak", '<path d="M10 1.5C10 5 14 5.6 14 9.8c0 2-1.2 3.6-2.9 4.2.6-1.2.4-2.7-.7-3.6.2 2-1.4 2.6-2.4 3.8-.9 1-.9 2.6.1 3.8C5.6 17.2 4 15 4 12.3 4 7.8 8.5 7.2 10 1.5Z"></path>'],
+      ].map(([label, path]) => ({
+        key: label,
+        label,
+        icon: React.createElement("svg", {
+          width: 20, height: 20, viewBox: "0 0 20 20", fill: "#F0B429",
+          stroke: "#0B1F17", strokeWidth: 1.2, strokeLinejoin: "round",
+          dangerouslySetInnerHTML: { __html: path },
+        }),
+      })),
+
+      goHome: this.go("home"),
+      goBuilder: this.go("builder"),
+      goTakeover: this.go("takeover"),
+      goShare: this.go("share"),
+    };
+  }
+}
+</script>
+</body>
+</html>

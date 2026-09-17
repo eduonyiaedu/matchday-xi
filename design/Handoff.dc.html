@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#07150F;}a{color:#F0B429;}a:hover{color:#FFD65A;}</style>
+</helmet>
+
+<div style="min-height:100%;background:#07150F;color:#F5F3EC;font-family:Inter,system-ui,sans-serif;padding:44px 28px 80px">
+<div style="max-width:860px;margin:0 auto">
+
+  <p style="margin:0;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.2em;color:#8A9A90;text-transform:uppercase">Matchday XI · Floodlight</p>
+  <h1 style="margin:10px 0 0;font-family:Oswald,sans-serif;font-weight:600;font-size:42px;line-height:1.02;text-transform:uppercase">Implementation<br>handoff</h1>
+  <p style="margin:14px 0 0;font-size:14px;line-height:1.6;color:#8A9A90;max-width:600px;text-wrap:pretty">Everything below maps onto the existing <span style="font-family:'JetBrains Mono',monospace;color:#F5F3EC">eduonyiaedu/matchday-xi</span> tree. No route changes, no schema changes except where explicitly flagged as new data. Drop the tokens in first — most of the redesign falls out of them.</p>
+
+  <h2 style="margin:48px 0 0;font-family:Oswald,sans-serif;font-weight:600;font-size:14px;letter-spacing:0.2em;text-transform:uppercase;color:#F0B429">01 · Tokens</h2>
+  <p style="margin:10px 0 16px;font-size:13px;color:#8A9A90">Replace the <span style="font-family:'JetBrains Mono',monospace;color:#F5F3EC">:root</span> block in <span style="font-family:'JetBrains Mono',monospace;color:#F5F3EC">src/app/globals.css</span>. The app is dark-only now — delete the <span style="font-family:'JetBrains Mono',monospace;color:#F5F3EC">.dark</span> block and the <span style="font-family:'JetBrains Mono',monospace;color:#F5F3EC">@custom-variant dark</span> line.</p>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:10px">
+    <sc-for list="{{ swatches }}" as="s" hint-placeholder-count="7">
+      <div style="background:#132A20;border-radius:12px;padding:13px;box-shadow:inset 0 0 0 1px rgba(245,243,236,0.07)">
+        <div style="{{ s.chip }}"></div>
+        <p style="margin:10px 0 0;font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#F5F3EC">{{ s.hex }}</p>
+        <p style="margin:4px 0 0;font-family:Oswald,sans-serif;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#8A9A90">{{ s.name }}</p>
+        <p style="margin:5px 0 0;font-size:11px;color:#8A9A90;line-height:1.4">{{ s.use }}</p>
+      </div>
+    </sc-for>
+  </div>
+
+  <pre style="margin:16px 0 0;background:#0B1F17;border-radius:12px;padding:18px;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:11.5px;line-height:1.75;color:#C9D5CE;box-shadow:inset 0 0 0 1px rgba(245,243,236,0.08)">:root {
+  --pitch:            #0B1F17;   /* app background        */
+  --pitch-light:      #132A20;   /* cards, sheets, panels */
+  --turf-a:           #0E2A1F;   /* stripe A              */
+  --turf-b:           #103020;   /* stripe B              */
+  --chalk:            #F5F3EC;   /* primary text          */
+  --muted:            #8A9A90;   /* secondary text        */
+  --gold:             #F0B429;   /* CTA, points, streak   */
+  --gold-hi:          #FFE28F;   /* gradient top stop     */
+  --gold-mid:         #F7C63C;   /* gradient mid stop     */
+  --gold-lo:          #DE9C10;   /* gradient bottom stop  */
+  --club:             #6CABDD;   /* per-user, from DB     */
+  --club-wash:        color-mix(in oklab, var(--club) 14%, transparent);
+
+  /* shadcn bindings — same names, new values */
+  --background:       var(--pitch);
+  --foreground:       var(--chalk);
+  --card:             var(--pitch-light);
+  --card-foreground:  var(--chalk);
+  --popover:          var(--pitch-light);
+  --popover-foreground: var(--chalk);
+  --primary:          var(--gold);
+  --primary-foreground: var(--pitch);
+  --secondary:        rgba(245,243,236,0.07);
+  --secondary-foreground: var(--chalk);
+  --muted-foreground: var(--muted);
+  --accent:           var(--club-wash);
+  --accent-foreground: var(--club);
+  --destructive:      #C8102E;
+  --border:           rgba(245,243,236,0.10);
+  --input:            rgba(245,243,236,0.12);
+  --ring:             var(--club);
+  --radius:           0.75rem;
+}</pre>
+
+  <h2 style="margin:48px 0 0;font-family:Oswald,sans-serif;font-weight:600;font-size:14px;letter-spacing:0.2em;text-transform:uppercase;color:#F0B429">02 · Type</h2>
+  <p style="margin:10px 0 16px;font-size:13px;color:#8A9A90">Swap Geist for Oswald + Inter in <span style="font-family:'JetBrains Mono',monospace;color:#F5F3EC">src/app/layout.tsx</span>; keep a mono for stats. Three roles, no exceptions.</p>
+  <div style="display:flex;flex-direction:column;gap:1px;background:rgba(245,243,236,0.08);border-radius:12px;overflow:hidden">
+    <div style="background:#132A20;padding:16px 18px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+      <div>
+        <p style="margin:0;font-family:Oswald,sans-serif;font-weight:600;font-size:26px;text-transform:uppercase;line-height:1">Man City vs Arsenal</p>
+        <p style="margin:5px 0 0;font-size:11.5px;color:#8A9A90">Oswald 500/600/700 · uppercase · headings, scores, team names, buttons</p>
+      </div>
+      <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#F0B429">--font-heading</span>
+    </div>
+    <div style="background:#132A20;padding:16px 18px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+      <div>
+        <p style="margin:0;font-size:15px">Predictions lock two hours before kickoff.</p>
+        <p style="margin:5px 0 0;font-size:11.5px;color:#8A9A90">Inter 400/500/600 · body copy, helper text, list rows</p>
+      </div>
+      <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#F0B429">--font-sans</span>
+    </div>
+    <div style="background:#132A20;padding:16px 18px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+      <div>
+        <p style="margin:0;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:22px;color:#F0B429">184 PTS · 04:12:37</p>
+        <p style="margin:5px 0 0;font-size:11.5px;color:#8A9A90">JetBrains Mono 500/700 · tabular · points, ranks, countdowns, shirt numbers</p>
+      </div>
+      <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#F0B429">--font-mono</span>
+    </div>
+  </div>
+
+  <h2 style="margin:48px 0 0;font-family:Oswald,sans-serif;font-weight:600;font-size:14px;letter-spacing:0.2em;text-transform:uppercase;color:#F0B429">03 · Component variants</h2>
+  <p style="margin:10px 0 16px;font-size:13px;color:#8A9A90">Same shadcn API, restyled. Only the <span style="font-family:'JetBrains Mono',monospace;color:#F5F3EC">cva</span> class strings change — no prop signatures move, so existing call sites compile untouched.</p>
+  <div style="display:flex;flex-direction:column;gap:12px">
+    <sc-for list="{{ variants }}" as="v" hint-placeholder-count="5">
+      <div style="background:#132A20;border-radius:12px;padding:16px 18px;box-shadow:inset 0 0 0 1px rgba(245,243,236,0.07)">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap">
+          <p style="margin:0;font-family:Oswald,sans-serif;font-weight:600;font-size:17px;text-transform:uppercase">{{ v.name }}</p>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#6CABDD">{{ v.file }}</span>
+        </div>
+        <p style="margin:8px 0 0;font-size:12.5px;line-height:1.55;color:#8A9A90;text-wrap:pretty">{{ v.note }}</p>
+      </div>
+    </sc-for>
+  </div>
+
+  <h2 style="margin:48px 0 0;font-family:Oswald,sans-serif;font-weight:600;font-size:14px;letter-spacing:0.2em;text-transform:uppercase;color:#F0B429">04 · Tailwind mapping</h2>
+  <pre style="margin:12px 0 0;background:#0B1F17;border-radius:12px;padding:18px;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:11.5px;line-height:1.75;color:#C9D5CE;box-shadow:inset 0 0 0 1px rgba(245,243,236,0.08)">@theme inline {
+  --color-pitch:       var(--pitch);
+  --color-pitch-light: var(--pitch-light);
+  --color-chalk:       var(--chalk);
+  --color-gold:        var(--gold);
+  --color-club:        var(--club);
+  --font-heading:      "Oswald", ui-sans-serif, system-ui;
+  --font-sans:         "Inter", ui-sans-serif, system-ui;
+  --font-mono:         "JetBrains Mono", ui-monospace, monospace;
+}
+
+/* turf texture utility — used by every pitch surface */
+@utility turf {
+  background-image: repeating-linear-gradient(
+    90deg, var(--turf-a) 0, var(--turf-a) 28px,
+    var(--turf-b) 28px, var(--turf-b) 56px
+  );
+}
+
+/* floodlight bloom — landing hero, takeover, splash only */
+@utility floodlight {
+  background-image: radial-gradient(
+    ellipse at 50% 40%,
+    color-mix(in oklab, var(--gold) 20%, transparent) 0%,
+    transparent 70%
+  );
+}</pre>
+
+  <h2 style="margin:48px 0 0;font-family:Oswald,sans-serif;font-weight:600;font-size:14px;letter-spacing:0.2em;text-transform:uppercase;color:#F0B429">05 · Club accent, end to end</h2>
+  <p style="margin:10px 0 14px;font-size:13px;color:#8A9A90;max-width:620px;text-wrap:pretty">You already have <span style="font-family:'JetBrains Mono',monospace;color:#F5F3EC">TEAM_COLORS</span> keyed by <span style="font-family:'JetBrains Mono',monospace;color:#F5F3EC">Team.externalId</span>. Lift it out of the jersey component and set it once on the app shell — everything downstream reads the variable.</p>
+  <pre style="margin:0;background:#0B1F17;border-radius:12px;padding:18px;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:11.5px;line-height:1.75;color:#C9D5CE;box-shadow:inset 0 0 0 1px rgba(245,243,236,0.08)">// src/app/(app)/layout.tsx
+const club = getTeamColors(user.favoriteTeam.externalId);
+
+&lt;div style={{ "--club": club.primary } as React.CSSProperties}&gt;
+  ...
+&lt;/div&gt;</pre>
+  <p style="margin:12px 0 0;font-size:13px;color:#8A9A90">Accent reaches: active tab + underline, empty pitch slots, filled jerseys, card hairline on the next-fixture card, focus rings, avatar, your pinned leaderboard row, shirt numbers in the squad drawer. It does <span style="color:#F5F3EC">not</span> tint page backgrounds — the pitch green stays constant so a Newcastle fan's app isn't unreadable.</p>
+
+  <h2 style="margin:48px 0 0;font-family:Oswald,sans-serif;font-weight:600;font-size:14px;letter-spacing:0.2em;text-transform:uppercase;color:#F0B429">06 · Screen map</h2>
+  <div style="margin-top:14px;display:flex;flex-direction:column;gap:1px;background:rgba(245,243,236,0.08);border-radius:12px;overflow:hidden">
+    <sc-for list="{{ screens }}" as="s" hint-placeholder-count="9">
+      <div style="background:#132A20;padding:15px 17px">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap">
+          <p style="margin:0;font-family:Oswald,sans-serif;font-weight:600;font-size:15px;text-transform:uppercase">{{ s.name }}</p>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#6CABDD">{{ s.file }}</span>
+        </div>
+        <p style="margin:7px 0 0;font-size:12.5px;line-height:1.55;color:#8A9A90;text-wrap:pretty">{{ s.note }}</p>
+      </div>
+    </sc-for>
+  </div>
+
+  <h2 style="margin:48px 0 0;font-family:Oswald,sans-serif;font-weight:600;font-size:14px;letter-spacing:0.2em;text-transform:uppercase;color:#F0B429">07 · New data required</h2>
+  <p style="margin:10px 0 14px;font-size:13px;color:#8A9A90">Five things the design shows that the schema doesn't hold yet. Everything else renders from what you already store.</p>
+  <div style="display:flex;flex-direction:column;gap:10px">
+    <sc-for list="{{ dataNeeds }}" as="d" hint-placeholder-count="5">
+      <div style="background:#132A20;border-radius:12px;padding:15px 17px;box-shadow:inset 0 0 0 1px rgba(240,180,41,0.18)">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap">
+          <p style="margin:0;font-family:Oswald,sans-serif;font-weight:600;font-size:15px;text-transform:uppercase">{{ d.name }}</p>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#F0B429">{{ d.source }}</span>
+        </div>
+        <p style="margin:7px 0 0;font-size:12.5px;line-height:1.55;color:#8A9A90;text-wrap:pretty">{{ d.note }}</p>
+      </div>
+    </sc-for>
+  </div>
+
+  <h2 style="margin:48px 0 0;font-family:Oswald,sans-serif;font-weight:600;font-size:14px;letter-spacing:0.2em;text-transform:uppercase;color:#F0B429">08 · Motion</h2>
+  <div style="margin-top:14px;display:flex;flex-direction:column;gap:10px">
+    <sc-for list="{{ motion }}" as="m" hint-placeholder-count="5">
+      <div style="background:#132A20;border-radius:12px;padding:15px 17px;display:flex;align-items:flex-start;gap:14px;box-shadow:inset 0 0 0 1px rgba(245,243,236,0.07)">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#F0B429;white-space:nowrap;padding-top:2px">{{ m.dur }}</span>
+        <div>
+          <p style="margin:0;font-family:Oswald,sans-serif;font-weight:600;font-size:15px;text-transform:uppercase">{{ m.name }}</p>
+          <p style="margin:5px 0 0;font-size:12.5px;line-height:1.5;color:#8A9A90;text-wrap:pretty">{{ m.note }}</p>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+  <p style="margin:14px 0 0;font-size:13px;color:#8A9A90;text-wrap:pretty"><span style="color:#F5F3EC">prefers-reduced-motion:</span> confetti is removed, the stamp appears static at its final rotation, the points counter jumps straight to the total, sheets cross-fade instead of sliding. Nothing is lost, only the movement.</p>
+
+  <h2 style="margin:48px 0 0;font-family:Oswald,sans-serif;font-weight:600;font-size:14px;letter-spacing:0.2em;text-transform:uppercase;color:#F0B429">09 · Crests &amp; IP</h2>
+  <p style="margin:10px 0 0;font-size:13px;line-height:1.6;color:#8A9A90;max-width:620px;text-wrap:pretty">Club crests appear on onboarding tiles, leaderboard rows and share cards. Your own code comments already avoid kit artwork deliberately, so every crest slot has a designed fallback: a solid disc in the club's primary colour with the three-letter code in Oswald. Ship the fallback if crest licensing isn't settled — the layouts are built around the disc, not the crest, so nothing shifts. The mockups show the fallback throughout for that reason.</p>
+
+  <h2 style="margin:48px 0 0;font-family:Oswald,sans-serif;font-weight:600;font-size:14px;letter-spacing:0.2em;text-transform:uppercase;color:#F0B429">10 · Icon &amp; PWA</h2>
+  <p style="margin:10px 0 14px;font-size:13px;line-height:1.6;color:#8A9A90;max-width:620px;text-wrap:pretty">The mark is a gold shield on a near-black field: <span style="font-family:'JetBrains Mono',monospace;color:#F5F3EC">#050B08</span> tile, gold shield interior, chalk centre circle and halfway line at 42%, and the XI in pitch-green sitting centred on the halfway line. The splash stacks the <span style="color:#F5F3EC">Matchday XI</span> wordmark above the shield in the same chalk/gold pairing used in the app header, with the oversized YOU beneath it.</p>
+  <p style="margin:0;font-size:13px;line-height:1.6;color:#8A9A90;max-width:620px;text-wrap:pretty">Export the shield mark at 192 / 512 / 512-maskable into <span style="font-family:'JetBrains Mono',monospace;color:#F5F3EC">public/icons/</span>, replacing the current files. Maskable needs the shield scaled to 80% inside the safe zone — the gold field bleeds to the edge and takes the crop. Update <span style="font-family:'JetBrains Mono',monospace;color:#F5F3EC">themeColor</span> in <span style="font-family:'JetBrains Mono',monospace;color:#F5F3EC">layout.tsx</span> from <span style="font-family:'JetBrains Mono',monospace;color:#F5F3EC">#0f172a</span> to <span style="font-family:'JetBrains Mono',monospace;color:#F5F3EC">#0B1F17</span> — it's currently slate, which flashes blue-grey on launch before the app paints.</p>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:920,&quot;height&quot;:1200}}">
+class Component extends DCLogic {
+  renderVals() {
+    const chip = (bg, extra) =>
+      `height:52px;border-radius:8px;background:${bg};${extra || ""}`;
+    return {
+      swatches: [
+        { key: "pitch", hex: "#0B1F17", name: "Pitch", use: "App background", chip: chip("#0B1F17", "box-shadow:inset 0 0 0 1px rgba(245,243,236,0.14)") },
+        { key: "pl", hex: "#132A20", name: "Pitch light", use: "Cards, sheets", chip: chip("#132A20", "box-shadow:inset 0 0 0 1px rgba(245,243,236,0.10)") },
+        { key: "turf", hex: "#0E2A1F / #103020", name: "Turf stripes", use: "Any pitch surface", chip: chip("repeating-linear-gradient(90deg,#0E2A1F 0,#0E2A1F 14px,#103020 14px,#103020 28px)") },
+        { key: "chalk", hex: "#F5F3EC", name: "Chalk", use: "Primary text", chip: chip("#F5F3EC") },
+        { key: "muted", hex: "#8A9A90", name: "Muted", use: "Secondary text", chip: chip("#8A9A90") },
+        { key: "gold", hex: "#F0B429", name: "Gold", use: "CTAs, points, streak", chip: chip("linear-gradient(160deg,#FFE28F 0%,#F7C63C 44%,#DE9C10 100%)") },
+        { key: "club", hex: "#6CABDD", name: "Club accent", use: "Per user, from DB", chip: chip("#6CABDD") },
+      ],
+      variants: [
+        { key: "btn", name: "Button", file: "ui/button.tsx", note: "default → gold gradient (#FFD65A→#F0B429), pitch-dark label, Oswald 600 uppercase 0.06em, radius 11px, 15px drop shadow. outline → transparent with a 1px chalk-10% inset ring. ghost → muted text, no fill. Disabled is the flat chalk-7% fill with muted text, used by the builder's \"Pick 4 more\" state — never a faded gold button." },
+        { key: "card", name: "Card", file: "ui/card.tsx", note: "Pitch-light fill, radius 14px, 0 4px 14px rgba(0,0,0,0.3) plus a 1px chalk-6% inset ring. The next-fixture card swaps that ring for the club accent at 28%. CardTitle becomes Oswald 600 uppercase; CardDescription stays Inter." },
+        { key: "badge", name: "Badge", file: "ui/badge.tsx", note: "Pill, mono 11px 700. default → gold on gold-14% wash. secondary → chalk on chalk-8%. outline → muted with a 1px ring. New tier variant renders the bronze/silver/gold disc (15px, no text) for leaderboard rows." },
+        { key: "table", name: "Table → rows", file: "leaderboard/leaderboard-table.tsx", note: "Drop the <table> for a flex row list — the row needs a 26px crest, a tier disc and a movement arrow that a table cell handles badly at 390px. Row: rank chip (mono 700, gold-16% for top 3), crest, name + mono meta line, tier disc, movement, points in mono 700 17px right-aligned, 1px chalk-7% top border. Your own row renders again pinned at the bottom with a 2px club-accent top border." },
+        { key: "tabs", name: "Tabs / Nav", file: "layout/app-nav.tsx", note: "Below 768px this becomes a fixed bottom bar: six items, custom 20px 1.5px-stroke marks, Oswald 9px uppercase labels, active item in club accent. At 768px+ it's the current top bar restyled — active pill is club-wash with club-coloured text. Same six hrefs in the same order; nothing about routing changes." },
+      ],
+      screens: [
+        { key: "mk", name: "Landing", file: "(marketing)/page.tsx", note: "Hero headline in Oswald over a floodlight bloom, then a live demo pitch: eleven tappable slots on turf, fills freely, scores against a stored past lineup, then the signup wall. Feature cards become a hairline-divided list — three bordered cards under a hero is the generic look you flagged." },
+        { key: "ob", name: "Onboarding", file: "onboarding/select-team/page.tsx + team/team-picker.tsx", note: "3-up grid of club tiles: crest disc over a 14% colour wash, selected state fills the wash and rings the tile in the club colour. Permanence line sits above the grid; Confirm opens a sheet naming the club and the rule before it commits." },
+        { key: "hm", name: "Home", file: "(app)/home/page.tsx", note: "Order: greeting + @username, next-fixture card (turf hero, countdown, 0/11 meter, gold CTA), global rank with Perfect XI count and tier disc, club rank with movement, streak with draw-eligibility line, then leagues. The four equal cards today give the fixture no more weight than the streak — it's the only thing with a deadline." },
+        { key: "hn", name: "Home · new user", file: "(app)/home/page.tsx", note: "Same route, zero-state branch: first-XI hero with the lock countdown, ranks as em-dashes with \"play a matchday to rank\", the +1/+3 scoring explainer, an empty tier disc, and the prize summary. Gate on totalPoints === 0 && predictions === 0." },
+        { key: "pb", name: "Prediction builder", file: "predict/pitch-builder.tsx", note: "Sticky 11/11 meter under the header, formation chips above the pitch, turf-striped pitch with real markings. Empty slots are club-accent rings that pulse; filling one pops it solid. Formation changes animate slots to new positions (340ms) — same slotIndex identity, so scoring is untouched. Long-press 380ms opens the stat card." },
+        { key: "dr", name: "Squad drawer", file: "predict/pitch-builder.tsx (replaces Dialog)", note: "62%-height bottom sheet, search pinned under the title, grouped Defenders/Midfielders/Forwards then Under 21 — your existing grouping logic, unchanged. Each row: shirt number in club accent, name, injury flag, five form dots. 44px minimum row height." },
+        { key: "clr", name: "Clearing a slot — NEW behaviour", file: "predict/pitch-builder.tsx", note: "The current build has no way to un-pick a player: selectPlayer only ever writes an id, so a wrong pick can be swapped but never emptied, and the meter can never go back down. Tapping a filled slot opens the drawer with a destructive \"Remove <player>\" row above the list — it sets slots[slotIndex] = null, closes the sheet, and the slot returns to its pulsing empty ring. The POST body already allows squadPlayerId: null per slot, so this is UI-only; just make sure the submit button stays disabled until all eleven are non-null." },
+        { key: "sc", name: "Scored view", file: "predict/pitch-builder.tsx (scored branch)", note: "Correct picks ring gold; misses go grey with a TAP hint, and tapping flips the slot to the player who actually started (chalk-white jersey, STARTED label). Uses the isCorrect you already store, plus the real lineup you already fetch." },
+        { key: "px", name: "Perfect XI takeover", file: "new — predict/perfect-xi-takeover.tsx", note: "Fires only on isPerfectXi. Team sheet checks off row by row, a PERFECT XI stamp slams over it, the points counter ticks to the total, confetti falls. Tier progress line underneath, then the share CTA. Every other scored matchday gets the in-place tick-up only — no takeover." },
+        { key: "sh", name: "Share cards", file: "new — app/api/share/[predictionId]/route.tsx", note: "Two @vercel/og compositions from one layout: 1080×1920 story (pitch dot diagram, no name list) and 1080×1080 square (headline only). Both carry fixture + score, @handle, club disc, tier badge and matchday-xi.app, with the XI mark as part of the composition." },
+        { key: "lb", name: "Leaderboards", file: "(public)/leaderboards/*", note: "One component, one club dropdown above it — global and per-club are the same list filtered, matching the brief. Your row stays pinned to the bottom of the viewport while you scroll. Keep both routes; the dropdown just navigates between them." },
+      ],
+      dataNeeds: [
+        { key: "form", name: "Form dots — started last 5", source: "derive", note: "You already store confirmed lineups per fixture. Derive a per-player \"started\" boolean over the club's last five fixtures at request time, or cache it on SquadPlayer with the existing sync job. No new API." },
+        { key: "inj", name: "Injury / suspension flag", source: "new field", note: "SquadPlayer.availability enum (AVAILABLE | DOUBT | OUT). football-data.org doesn't carry it reliably — either admin-set it or pull from your API-Football integration, which does." },
+        { key: "ga", name: "Goals / assists", source: "API-Football", note: "Season aggregates per player. Purely informational on the stat card — if it's not there, the row drops and the card reflows." },
+        { key: "mv", name: "Rank movement arrow", source: "new table", note: "A RankSnapshot row (userId, scope, rank, matchday) written when a matchday finishes scoring. Movement is this rank minus the previous. Without it, omit the arrow — don't fake it." },
+        { key: "tier", name: "Perfect XI tier", source: "derive", note: "Straight from the perfectXiCount you already store: 1+ Bronze, 5+ Silver, 10+ Gold. No migration." },
+      ],
+      motion: [
+        { key: "tick", dur: "1.4s", name: "Points tick-up", note: "Counter runs 0 → total on a steps() odometer when a matchday scores. The single highest-leverage moment in the app — it plays on every scored prediction, not just perfect ones." },
+        { key: "slot", dur: "260ms", name: "Slot fill", note: "Jersey pops from 0.4 to 1.14 to 1 on selection, with a short haptic on touch devices. Empty slots pulse a club-accent ring every 2.4s, staggered 90ms apart so the pitch breathes rather than blinks." },
+        { key: "form", dur: "340ms", name: "Formation change", note: "Slots interpolate top/left to their new positions. Because identity is preserved, players travel with their slot — no flicker, no re-pick." },
+        { key: "stamp", dur: "600ms", name: "Perfect XI stamp", note: "Rows check off at 90ms intervals, then the stamp drops from 2.6× scale to 1 with a shockwave ring. Confetti falls for ~4s." },
+        { key: "sheet", dur: "280ms", name: "Sheets & tabs", note: "Bottom sheets slide from 100% with a cubic-bezier(0.2,0.9,0.3,1) ease. Tab changes cross-fade at 160ms — never a hard cut." },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>
