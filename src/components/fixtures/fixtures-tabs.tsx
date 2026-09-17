@@ -5,9 +5,9 @@ import { cn } from "@/lib/utils";
  * top-level tab, so this is the only thing distinguishing the two pages' headers. */
 export function FixturesTabs({ active }: { active: "upcoming" | "history" | "table" }) {
   const tabs = [
+    { key: "table", href: "/fixtures/table", label: "Table" },
     { key: "upcoming", href: "/fixtures", label: "Upcoming" },
     { key: "history", href: "/fixtures/history", label: "History" },
-    { key: "table", href: "/fixtures/table", label: "Table" },
   ] as const;
 
   return (

@@ -191,9 +191,9 @@ function lineupList({
   renderItem: (slotIndex: number) => React.ReactNode;
 }) {
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", width: "100%", gap: 16, marginTop: 40 }}>
+    <div style={{ display: "flex", flexWrap: "wrap", width: "100%", gap: 20, marginTop: 40 }}>
       {layout.map((pos) => (
-        <div key={pos.slotIndex} style={{ display: "flex", width: 290 }}>
+        <div key={pos.slotIndex} style={{ display: "flex", alignItems: "center", width: 320, height: 44 }}>
           {renderItem(pos.slotIndex)}
         </div>
       ))}
@@ -274,21 +274,21 @@ function resultCard({
                     display: "flex",
                     flexDirection: "column",
                     alignItems: "center",
-                    marginLeft: -50,
-                    marginTop: -34,
-                    width: 100,
+                    marginLeft: -65,
+                    marginTop: -46,
+                    width: 130,
                   }}
                 >
                   <div
                     style={{
-                      width: 34,
-                      height: 34,
+                      width: 52,
+                      height: 52,
                       borderRadius: 999,
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
                       backgroundColor: correct ? GOLD : "rgba(245,243,236,0.18)",
-                      fontSize: 13,
+                      fontSize: 20,
                       fontWeight: 700,
                       color: correct ? "#0B1F17" : MUTED,
                     }}
@@ -298,8 +298,8 @@ function resultCard({
                   <span
                     style={{
                       display: "flex",
-                      marginTop: 6,
-                      fontSize: 15,
+                      marginTop: 8,
+                      fontSize: 19,
                       fontWeight: 600,
                       color: correct ? CHALK : MUTED,
                       textAlign: "center",
@@ -319,24 +319,24 @@ function resultCard({
               const player = slot?.squadPlayer;
               const correct = slot?.isCorrect === true;
               return (
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                   <div
                     style={{
                       display: "flex",
-                      width: 26,
-                      height: 26,
+                      width: 38,
+                      height: 38,
                       borderRadius: 999,
                       alignItems: "center",
                       justifyContent: "center",
                       backgroundColor: correct ? GOLD : "rgba(245,243,236,0.14)",
-                      fontSize: 11,
+                      fontSize: 14,
                       fontWeight: 700,
                       color: correct ? "#0B1F17" : MUTED,
                     }}
                   >
                     {player?.shirtNumber ?? ""}
                   </div>
-                  <span style={{ display: "flex", fontSize: 17, fontWeight: 600, color: correct ? CHALK : MUTED }}>
+                  <span style={{ display: "flex", fontSize: 22, fontWeight: 600, color: correct ? CHALK : MUTED }}>
                     {player ? player.name.split(" ").slice(-1)[0].toUpperCase() : ""}
                   </span>
                 </div>
@@ -421,22 +421,22 @@ function predictedLineupCard({
                     display: "flex",
                     flexDirection: "column",
                     alignItems: "center",
-                    marginLeft: -50,
-                    marginTop: -34,
-                    width: 100,
+                    marginLeft: -65,
+                    marginTop: -46,
+                    width: 130,
                   }}
                 >
                   <div
                     style={{
-                      width: 40,
-                      height: 40,
+                      width: 52,
+                      height: 52,
                       borderRadius: 999,
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
                       backgroundColor: colors.primary,
                       color: colors.secondary,
-                      fontSize: 15,
+                      fontSize: 20,
                       fontWeight: 700,
                     }}
                   >
@@ -445,8 +445,8 @@ function predictedLineupCard({
                   <span
                     style={{
                       display: "flex",
-                      marginTop: 6,
-                      fontSize: 15,
+                      marginTop: 8,
+                      fontSize: 19,
                       fontWeight: 600,
                       color: CHALK,
                       textAlign: "center",
@@ -464,24 +464,24 @@ function predictedLineupCard({
             renderItem: (slotIndex) => {
               const player = slotByIndex.get(slotIndex)?.squadPlayer;
               return (
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                   <div
                     style={{
                       display: "flex",
-                      width: 26,
-                      height: 26,
+                      width: 38,
+                      height: 38,
                       borderRadius: 999,
                       alignItems: "center",
                       justifyContent: "center",
                       backgroundColor: colors.primary,
                       color: colors.secondary,
-                      fontSize: 11,
+                      fontSize: 14,
                       fontWeight: 700,
                     }}
                   >
                     {player?.shirtNumber ?? ""}
                   </div>
-                  <span style={{ display: "flex", fontSize: 17, fontWeight: 600, color: CHALK }}>
+                  <span style={{ display: "flex", fontSize: 22, fontWeight: 600, color: CHALK }}>
                     {player ? player.name.split(" ").slice(-1)[0].toUpperCase() : ""}
                   </span>
                 </div>
