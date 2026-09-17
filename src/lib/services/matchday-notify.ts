@@ -166,20 +166,22 @@ async function sendPush(plan: PendingPush): Promise<void> {
   await sendPushToUsers(plan.predicted, { ...base, body: plan.predictedBody });
 }
 
-// Matches the app's own "day/month/year, HH:mm (HH:mm GMT)" convention (see ui/local-time.tsx) as
+// Matches the app's own "day/month/year HH:mm (HH:mm GMT)" convention (see ui/local-time.tsx) as
 // closely as a single static push body can — a push payload is composed once server-side and
 // can't be reformatted per recipient's timezone the way the in-app UI is, so this renders the
 // UTC/GMT time only rather than guessing a viewer's local timezone.
 function formatFixtureLine(fixture: Fixture & { homeTeam: Team; awayTeam: Team }): string {
   const matchup = `${fixture.homeTeam.shortName ?? fixture.homeTeam.name} vs ${fixture.awayTeam.shortName ?? fixture.awayTeam.name}`;
-  const kickoff = fixture.kickoffAt.toLocaleString("en-GB", {
-    timeZone: "UTC",
-    day: "numeric",
-    month: "numeric",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
+  const kickoff = fixture.kickoffAt
+    .toLocaleString("en-GB", {
+      timeZone: "UTC",
+      day: "numeric",
+      month: "numeric",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    })
+    .replace(",", "");
   return `${matchup}, ${kickoff} GMT`;
 }

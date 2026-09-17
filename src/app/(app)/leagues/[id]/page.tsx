@@ -137,13 +137,13 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
                       <CardDescription>
                         <LocalTime iso={f.kickoffAt.toISOString()} />
                       </CardDescription>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {locked && <Badge variant="outline">Locked</Badge>}
-                      {!locked && (
-                        <FixtureEligibilityBadge isNext={isNext} windowOpen={windowOpen} opensAt={predictionOpensAt(f)} />
+                      {!locked && isNext && !windowOpen && (
+                        <div className="mt-1.5">
+                          <FixtureEligibilityBadge isNext={isNext} windowOpen={windowOpen} opensAt={predictionOpensAt(f)} />
+                        </div>
                       )}
                     </div>
+                    <div className="flex items-center gap-2">{locked && <Badge variant="outline">Locked</Badge>}</div>
                   </CardHeader>
                   <CardContent>
                     {locked || actionable ? (
@@ -154,7 +154,7 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
                       </Button>
                     ) : (
                       <Button disabled size="sm" variant="outline">
-                        {isNext ? "Opens soon" : "Not yet your next match"}
+                        {isNext ? "Opens soon" : "Opens 24hrs before kickoff"}
                       </Button>
                     )}
                   </CardContent>

@@ -378,6 +378,7 @@ function predictedLineupCard({
       minute: "2-digit",
       hour12: false,
     })
+    .replace(",", "")
     .toUpperCase();
   const initials = (prediction.team.shortName ?? prediction.team.name).slice(0, 3).toUpperCase();
 

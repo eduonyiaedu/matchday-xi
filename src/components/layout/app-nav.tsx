@@ -1,10 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
-import { Button } from "@/components/ui/button";
+import { usePathname } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
+import { LogoutButton } from "@/components/layout/logout-button";
 import { cn } from "@/lib/utils";
 
 // Exact 20x20 stroke-mark path data from the design's tab-bar icon set.
@@ -41,14 +40,6 @@ export function AppNav({
   teamInitials: string;
 }) {
   const pathname = usePathname();
-  const router = useRouter();
-
-  async function logout() {
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    router.push("/login");
-    router.refresh();
-  }
 
   return (
     <>
@@ -96,9 +87,7 @@ export function AppNav({
             <div className="flex size-8 items-center justify-center rounded-full bg-club font-heading text-[11px] font-bold text-pitch">
               {teamInitials}
             </div>
-            <Button variant="ghost" size="sm" onClick={logout}>
-              Log out
-            </Button>
+            <LogoutButton variant="ghost" size="sm" />
           </div>
         </div>
       </header>

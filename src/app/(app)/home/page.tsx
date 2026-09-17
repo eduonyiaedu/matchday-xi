@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { LocalTime } from "@/components/ui/local-time";
 import { TierDisc, tierFromPerfectXiCount } from "@/components/leaderboard/tier-disc";
 import { HomeAvatar } from "@/components/home/home-avatar";
+import { LogoutButton } from "@/components/layout/logout-button";
 import { PushOptIn } from "@/components/push/push-opt-in";
 import { computeGlobalRank, computeLeagueStandings } from "@/lib/rank";
 import { getNextEligibleFixture, isPredictionWindowOpen, predictionOpensAt } from "@/lib/next-fixture";
@@ -97,7 +98,11 @@ export default async function HomePage() {
       <PushOptIn />
 
       {/* Next-fixture hero */}
-      <Card className="overflow-hidden p-0" style={{ boxShadow: `0 10px 30px rgba(0,0,0,0.45), 0 0 0 1px ${colors.primary}45` }}>
+      <div>
+        {nextFixture && (
+          <p className="mb-2 font-heading text-[13px] font-semibold tracking-[0.16em] text-gold uppercase">Next match</p>
+        )}
+        <Card className="overflow-hidden p-0" style={{ boxShadow: `0 10px 30px rgba(0,0,0,0.45), 0 0 0 1px ${colors.primary}45` }}>
         {nextFixture ? (
           <>
             <div className="relative h-37 turf">
@@ -148,7 +153,8 @@ export default async function HomePage() {
             <p className="text-sm text-muted-foreground">No upcoming fixtures synced yet.</p>
           </CardContent>
         )}
-      </Card>
+        </Card>
+      </div>
 
       {isNewUser ? (
         <>
@@ -256,6 +262,8 @@ export default async function HomePage() {
           </div>
         </div>
       )}
+
+      <LogoutButton className="w-full" />
     </div>
   );
 }

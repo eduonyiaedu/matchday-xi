@@ -31,12 +31,12 @@ export function LocalTime({ iso, dateOnly = false }: { iso: string; dateOnly?: b
   const date = new Date(iso);
   const utcString = dateOnly
     ? date.toLocaleDateString("en-GB", { timeZone: "UTC" })
-    : date.toLocaleString("en-GB", { timeZone: "UTC", ...DATE_TIME_OPTIONS });
+    : date.toLocaleString("en-GB", { timeZone: "UTC", ...DATE_TIME_OPTIONS }).replace(",", "");
   const gmtClock = date.toLocaleTimeString("en-GB", { timeZone: "UTC", ...TIME_OPTIONS });
 
   const localString = useSyncExternalStore(
     subscribe,
-    () => (dateOnly ? date.toLocaleDateString() : date.toLocaleString(undefined, DATE_TIME_OPTIONS)),
+    () => (dateOnly ? date.toLocaleDateString() : date.toLocaleString(undefined, DATE_TIME_OPTIONS).replace(",", "")),
     () => utcString,
   );
 

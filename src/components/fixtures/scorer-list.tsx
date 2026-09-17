@@ -32,8 +32,7 @@ export function ScorerList({
           <TableHead className="w-8">#</TableHead>
           <TableHead>Player</TableHead>
           <TableHead>Club</TableHead>
-          <TableHead className="text-right">Goals</TableHead>
-          <TableHead className="text-right">Assists</TableHead>
+          <TableHead className="text-right">{emphasize === "goals" ? "Goals" : "Assists"}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -42,11 +41,8 @@ export function ScorerList({
             <TableCell className="font-mono text-xs text-muted-foreground">{i + 1}</TableCell>
             <TableCell className="font-medium">{row.playerName}</TableCell>
             <TableCell className="text-muted-foreground">{row.team?.shortName ?? row.team?.name ?? ""}</TableCell>
-            <TableCell className={emphasize === "goals" ? "text-right font-mono text-sm font-bold" : "text-right font-mono text-sm"}>
-              {row.goals}
-            </TableCell>
-            <TableCell className={emphasize === "assists" ? "text-right font-mono text-sm font-bold" : "text-right font-mono text-sm"}>
-              {row.assists}
+            <TableCell className="text-right font-mono text-sm font-bold">
+              {emphasize === "goals" ? row.goals : row.assists}
             </TableCell>
           </TableRow>
         ))}
