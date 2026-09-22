@@ -105,6 +105,20 @@ transaction even reads. Three fix patterns are established here, depending on wh
   can retry rather than permanently marking something "handled" that was actually just lost. Return
   a boolean (or similar) rather than swallowing everything into `void`. Both `lib/notify.ts` and
   `lib/push.ts` follow this now — if a new best-effort sender gets added, match it.
+- **A lock scoped to a narrower resource can't safely decide something that spans a wider shared
+  resource.** `lineup-scoring.ts`'s `applyOfficialLineup` locks on `(fixtureId, teamId)` — correct
+  for preventing two calls for the *same* team from double-counting points, but a home-team call
+  and an away-team call take two *different* lock keys and can run fully concurrently. The
+  "are both sides done → flip the fixture to SCORED" check used to be computed from inside that
+  same per-team-locked transaction — under READ COMMITTED, a genuinely concurrent home+away call
+  (confirmed real: exactly the admin-manual-entry-while-a-cron-run-is-in-flight scenario this file
+  already describes) could have both calls see only their own uncommitted row and neither ever
+  observe "both done," silently stranding the fixture forever despite every prediction being
+  scored correctly. Fixed by giving that decision its own separate transaction, locked on a
+  fixture-wide key, run only after both individual per-team transactions have committed. The
+  general rule: if a decision depends on state written under multiple different lock keys, that
+  decision needs its own lock on the resource it actually spans — not a decision made while
+  holding a narrower one.
 
 ## Free-tier data provider limits (confirmed live, not assumed — re-verify if plans may have changed)
 
@@ -146,3 +160,14 @@ transaction even reads. Three fix patterns are established here, depending on wh
   provider-spelling difference. Hyphens are deliberately kept as part of a name token (not split
   into a space) so a compound surname like "Alexander-Arnold" doesn't truncate to just "Arnold"
   and risk matching an unrelated same-fragment player.
+- **Raising a data volume that feeds into an existing `prisma.$transaction` can blow that
+  transaction's own timeout, even though nothing about the transaction's code changed.**
+  `standings-sync.ts`'s transaction did a sequential per-row team-upsert-then-create loop for
+  every scorer; that was fine at a 20-scorer limit but hit the 20s timeout (confirmed live, P2028
+  at ~20.1s) the moment the limit was raised to 500 (returning ~90 real rows) for the assists-list
+  fix. Whenever a change increases how many rows flow into a loop inside a transaction, check
+  whether the timeout still holds — don't assume "the transaction logic didn't change" means "the
+  transaction is still fine." Fix pattern: pre-resolve anything cacheable/shared (here, team rows
+  — standings and scorers reference the same 20 PL clubs, so resolving them once outside the
+  transaction turned ~110 potential upserts into ~20) and replace a per-row loop with a single
+  `createMany` wherever the rows don't need individual per-row branching logic.
