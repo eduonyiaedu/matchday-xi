@@ -53,12 +53,19 @@ whichever turned something up last time:
    explicitly by the founder (2026-09-17): offer this every round, since this file travels with the
    repo across machines/sessions and Claude's own session memory doesn't.
 
-## A recurring bug class: cron + admin-button dual triggers
+## A recurring bug class: two routes/jobs racing on the same row
 
 Several service functions run from both a scheduled cron route and an admin "do it now" button in
 `/admin` (e.g. `squad-enrichment-sync.ts`, `lineup-scoring.ts`, `standings-sync.ts`). When both fire
-close together, a naive implementation lets them race. Two fix patterns are established here,
-depending on what's racing:
+close together, a naive implementation lets them race. **The pattern isn't limited to cron vs.
+admin-button, though** — any two routes/jobs that can write the same row concurrently qualify. A
+confirmed real example: `/api/leagues/[id]/join` (a user submitting/retrying a join request) vs.
+`/api/leagues/membership` (the league creator approving it) — the join route read membership
+status, then unconditionally upserted `PENDING` if not already `APPROVED`; a join retry racing a
+concurrent approval could read stale (pre-approval) state and revert the just-approved membership,
+silently swapping the "permanent" team back. Fixed by giving both routes the same advisory lock
+keyed on `(leagueId, userId)`, so whichever acquires it first fully completes before the other's
+transaction even reads. Three fix patterns are established here, depending on what's racing:
 - **A non-atomic check-then-create against a row with a real unique constraint** → convert to a
   real Prisma `upsert`, or catch `P2002` on the `create()` (don't parse `error.meta.target` to
   distinguish constraint types — it's not a reliable column-array; re-query by the actual unique
@@ -74,6 +81,13 @@ depending on what's racing:
   resource must be serialized. Keep any real network I/O (push sends, external API calls) *outside*
   the transaction, executed only after it commits — a delivery failure shouldn't roll back state
   that already correctly committed.
+- **A check-then-write race where the guarded field has no unique constraint but IS itself a
+  natural single-column guard** (e.g. `User.favoriteTeamLockedAt`, checked-then-set once) doesn't
+  need a full advisory-lock transaction — a single atomic conditional update does it: `prisma.x
+  .updateMany({ where: { id, guardColumn: null }, data: {...} })`, then branch on the returned
+  `count` (0 means someone else already won the race). Cheaper than a lock when the "collision"
+  condition is expressible directly in a `WHERE` clause. Used in `teams/change/route.ts` to close a
+  race against `predictions/route.ts`'s first-prediction lock.
 - When auditing or touching a service function, check whether it's invoked from more than one
   entry point (grep for its name across `src/app/api/cron/**` and `src/app/**/admin/**`) before
   assuming "it's just a cron, it won't overlap with anything."
@@ -89,7 +103,8 @@ depending on what's racing:
   distinguish "not configured" from "a real send failed"** — treat the former as handled (no
   retry, since retrying a missing API key does nothing), but let the caller know the latter so it
   can retry rather than permanently marking something "handled" that was actually just lost. Return
-  a boolean (or similar) rather than swallowing everything into `void`.
+  a boolean (or similar) rather than swallowing everything into `void`. Both `lib/notify.ts` and
+  `lib/push.ts` follow this now — if a new best-effort sender gets added, match it.
 
 ## Free-tier data provider limits (confirmed live, not assumed — re-verify if plans may have changed)
 
