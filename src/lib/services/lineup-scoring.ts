@@ -33,7 +33,7 @@ export async function applyOfficialLineup(
   // advisory lock scoped to (fixtureId, teamId) makes the whole read-score-write sequence exclusive:
   // the second caller blocks until the first transaction commits, then reads the already-updated
   // pointsAwarded and correctly computes a zero (or true incremental) delta instead.
-  const { predictionsScored, bothDone, justScored } = await prisma.$transaction(
+  const { predictionsScored } = await prisma.$transaction(
     async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${fixtureId} || ':' || ${teamId}))`;
 
@@ -99,21 +99,33 @@ export async function applyOfficialLineup(
         }
       }
 
-      const refreshed = await tx.officialLineup.findMany({ where: { fixtureId } });
-      const fixture = await tx.fixture.findUniqueOrThrow({ where: { id: fixtureId } });
-      const bothDone =
-        refreshed.some((l) => l.teamId === fixture.homeTeamId) &&
-        refreshed.some((l) => l.teamId === fixture.awayTeamId);
-      const justScored = bothDone && fixture.status !== "SCORED";
-
-      if (justScored) {
-        await tx.fixture.update({ where: { id: fixtureId }, data: { status: "SCORED" } });
-      }
-
-      return { predictionsScored: predictions.length, bothDone, justScored };
+      return { predictionsScored: predictions.length };
     },
     { timeout: 20_000 },
   );
+
+  // Deliberately a SEPARATE transaction, locked on a fixture-wide key (not fixtureId:teamId) —
+  // the lock above only serializes two calls for the SAME team (preventing double-counted
+  // points), so a concurrent home-team call and away-team call acquire different lock keys and
+  // can run fully concurrently. Under READ COMMITTED, each would only see its own just-committed
+  // upsert and never its sibling's, so computing "both sides done" from inside the per-team
+  // transaction above could have BOTH calls see bothDone=false and never flip the fixture to
+  // SCORED — a real, confirmed bug: exactly the admin-manual-entry-while-a-cron-run-is-in-flight
+  // scenario the docstring above already calls out. Re-reading fresh here, after both individual
+  // commits, closes that gap.
+  const justScored = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"fixture-complete:" + fixtureId}))`;
+    const refreshed = await tx.officialLineup.findMany({ where: { fixtureId } });
+    const fixture = await tx.fixture.findUniqueOrThrow({ where: { id: fixtureId } });
+    const bothDone =
+      refreshed.some((l) => l.teamId === fixture.homeTeamId) &&
+      refreshed.some((l) => l.teamId === fixture.awayTeamId);
+    const justScored = bothDone && fixture.status !== "SCORED";
+    if (justScored) {
+      await tx.fixture.update({ where: { id: fixtureId }, data: { status: "SCORED" } });
+    }
+    return justScored;
+  });
 
   if (justScored) {
     // Sent after the transaction commits, and guarded by the same "wasn't already SCORED" check
@@ -167,5 +179,5 @@ export async function applyOfficialLineup(
     }
   }
 
-  return { resolvedCount: resolvedPlayerIds.length, predictionsScored, bothDone };
+  return { resolvedCount: resolvedPlayerIds.length, predictionsScored, justScored };
 }

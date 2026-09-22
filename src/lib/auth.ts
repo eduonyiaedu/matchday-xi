@@ -50,10 +50,14 @@ export const getOrCreateCurrentUser = cache(async () => {
 
   const existingUser = await prisma.user.findUnique({ where: { id: authUser.id } });
   if (existingUser) {
-    // Logging back in before deletionScheduledAt passes cancels the pending deletion — the
-    // account was never actually touched yet (see PURGE_EXPIRED_ACCOUNTS), so this is a cheap
-    // no-op check for the overwhelming majority of users where the field is simply null.
-    if (existingUser.deletionScheduledAt && existingUser.deletionScheduledAt > new Date()) {
+    // Logging back in ever cancels a pending deletion — deliberately not conditioned on
+    // deletionScheduledAt still being in the future. PURGE_EXPIRED_ACCOUNTS only runs once daily,
+    // so there's up to ~24h after the scheduled date passes where the row hasn't actually been
+    // purged yet; a user logging in during exactly that window must still get the "log back in
+    // and it's cancelled" behavior the profile page promises them, not a silent no-op that lets
+    // that night's purge run anonymize them anyway. Cheap no-op read for the overwhelming
+    // majority of users where the field is simply null either way.
+    if (existingUser.deletionScheduledAt) {
       return prisma.user.update({ where: { id: existingUser.id }, data: { deletionScheduledAt: null } });
     }
     return existingUser;

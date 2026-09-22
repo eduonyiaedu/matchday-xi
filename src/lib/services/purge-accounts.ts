@@ -42,7 +42,13 @@ export async function purgeExpiredAccounts() {
         where: { id },
         data: {
           email: `deleted-${id}@deleted.matchday-xi.app`,
-          username: `deleted-${id.slice(0, 8)}`,
+          // Full id, not a truncated slice — username is @unique, and a truncated 8-hex-char
+          // slice has a real (if rare) collision risk between two different users' ids. A
+          // collision here wouldn't just fail once: the auth-delete above would have already
+          // succeeded, so a retry short-circuits past it (line 39) and hits the exact same
+          // username collision again on every subsequent run, forever, since nothing about the
+          // colliding value ever changes between retries.
+          username: `deleted-${id}`,
           displayName: "Deleted user",
           deletionScheduledAt: null,
         },

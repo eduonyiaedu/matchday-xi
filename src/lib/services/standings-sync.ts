@@ -28,6 +28,18 @@ export async function syncStandingsAndScorers() {
     footballDataClient.getScorers(COMPETITION_CODES.PREMIER_LEAGUE, 500),
   ]);
 
+  // Resolve every distinct team referenced by either list ONCE, before the transaction —
+  // standings covers all 20 PL clubs and scorers' teams are a subset of the same 20, so deduping
+  // first turns what used to be up to 110 sequential team-upsert round trips *inside* the
+  // transaction (one per standings row AND one per scorer) into at most 20, done upfront with no
+  // lock held and no timeout pressure. This is exactly what broke once the scorers limit was
+  // raised from 20 to 500 above — confirmed live: a 90-scorer response blew the transaction's
+  // 20s timeout inside the old per-row-upsert loop (P2028, ~20.1s elapsed).
+  const allTeamRefs = [...standings.map((s) => s.team), ...scorers.map((s) => s.team)];
+  const uniqueTeamRefs = [...new Map(allTeamRefs.map((ref) => [ref.id, ref])).values()];
+  const resolvedTeams = await Promise.all(uniqueTeamRefs.map((ref) => upsertOpponentTeam(ref)));
+  const teamsByExternalId = new Map(uniqueTeamRefs.map((ref, i) => [ref.id, resolvedTeams[i]]));
+
   // Runs from both a cron and an admin manual-sync button (see the dual-trigger race class this
   // codebase has hit before — squad-enrichment-sync.ts, lineup-scoring.ts). Both writes below are
   // real upserts / a lock-guarded replace, not check-then-create, so two concurrent runs settle on
@@ -37,7 +49,7 @@ export async function syncStandingsAndScorers() {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"standings-sync:" + competition.id}))`;
 
       for (const row of standings) {
-        const team = await upsertOpponentTeam(row.team, tx);
+        const team = teamsByExternalId.get(row.team.id)!;
         await tx.leagueStanding.upsert({
           where: { competitionId_teamId: { competitionId: competition.id, teamId: team.id } },
           update: {
@@ -69,24 +81,21 @@ export async function syncStandingsAndScorers() {
 
       // The scorers list can reorder or drop a player entirely (overtaken, transferred out) —
       // replace wholesale rather than upserting by rank, same "latest sync wins" approach as
-      // official lineups.
+      // official lineups. A single createMany instead of up to ~90 sequential creates.
       await tx.topScorer.deleteMany({ where: { competitionId: competition.id } });
-      for (const [index, scorer] of scorers.entries()) {
-        const team = await upsertOpponentTeam(scorer.team, tx);
-        await tx.topScorer.create({
-          data: {
-            competitionId: competition.id,
-            playerExternalId: scorer.player.id,
-            playerName: scorer.player.name,
-            teamId: team.id,
-            goals: scorer.goals,
-            assists: scorer.assists ?? 0,
-            rank: index + 1,
-          },
-        });
-      }
+      await tx.topScorer.createMany({
+        data: scorers.map((scorer, index) => ({
+          competitionId: competition.id,
+          playerExternalId: scorer.player.id,
+          playerName: scorer.player.name,
+          teamId: teamsByExternalId.get(scorer.team.id)!.id,
+          goals: scorer.goals,
+          assists: scorer.assists ?? 0,
+          rank: index + 1,
+        })),
+      });
     },
-    { timeout: 20_000 },
+    { timeout: 30_000 },
   );
 
   return { standingsSynced: standings.length, scorersSynced: scorers.length };
