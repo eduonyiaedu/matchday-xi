@@ -149,8 +149,6 @@ model Team {
   leagueMemberships PrivateLeagueMembership[]
   leagueStandings   LeagueStanding[]
   topScorerEntries  TopScorer[]
-
-  @@index([isPremierLeagueClub])
 }
 
 /// One row per player per team. Synced live, never hardcoded (rulebook §2).
@@ -221,6 +219,7 @@ model LeagueStanding {
   updatedAt      DateTime    @updatedAt
 
   @@unique([competitionId, teamId])
+  @@index([teamId])
 }
 
 /// Season-long goals/assists leaderboard, synced from football-data.org's free-tier scorers
@@ -242,7 +241,7 @@ model TopScorer {
   updatedAt        DateTime    @updatedAt
 
   @@unique([competitionId, playerExternalId])
-  @@index([competitionId, rank])
+  @@index([teamId])
 }
 
 model Fixture {
@@ -286,6 +285,9 @@ model Fixture {
   @@index([kickoffAt])
   @@index([lockAt])
   @@index([status])
+  @@index([homeTeamId])
+  @@index([awayTeamId])
+  @@index([competitionId])
 }
 
 /// Dedup record for the private-league "it's matchday" nudge — needed separately from
@@ -300,6 +302,7 @@ model PrivateLeagueMatchdayNotification {
   notifiedAt DateTime      @default(now())
 
   @@unique([fixtureId, leagueId])
+  @@index([leagueId])
 }
 
 /// A user's 11-player guess for one fixture. null privateLeagueId = global/per-team;
@@ -334,8 +337,8 @@ model Prediction {
 
   @@unique([userId, fixtureId, scopeKey])
   @@index([fixtureId])
-  @@index([userId])
   @@index([privateLeagueId])
+  @@index([teamId])
 }
 
 /// 11 rows per Prediction: slotIndex 0 = GK, 1-10 = free-form outfield.
@@ -351,6 +354,7 @@ model PredictionSlot {
 
   @@unique([predictionId, slotIndex])
   @@unique([predictionId, squadPlayerId])
+  @@index([squadPlayerId])
 }
 
 /// The confirmed XI, keyed by (fixture, team) since either side's fans may be predicting. Usually
@@ -369,6 +373,7 @@ model OfficialLineup {
   players OfficialLineupPlayer[]
 
   @@unique([fixtureId, teamId])
+  @@index([teamId])
 }
 
 model OfficialLineupPlayer {
@@ -385,6 +390,7 @@ model OfficialLineupPlayer {
   isGoalkeeper           Boolean        @default(false)
 
   @@index([officialLineupId])
+  @@index([squadPlayerId])
 }
 
 /// One row the first time a user is seen each calendar day. Drives streaks + monthly prize eligibility.
@@ -421,6 +427,8 @@ model MonthlyPrizeDraw {
   eligibleCount Int       @default(0)
   drawnAt       DateTime?
   createdAt     DateTime  @default(now())
+
+  @@index([winnerUserId])
 }
 
 /// Free-tier private competitions (rulebook §12b). Paid fields exist but are hard-disabled in this build.
@@ -449,6 +457,8 @@ model PrivateLeague {
   matchdayPushes PrivateLeagueMatchdayNotification[]
 
   @@index([creatorId])
+  @@index([restrictedCompetitionId])
+  @@index([restrictedTeamId])
 }
 
 model PrivateLeagueMembership {
@@ -467,6 +477,8 @@ model PrivateLeagueMembership {
   respondedAt DateTime?
 
   @@unique([leagueId, userId])
+  @@index([teamId])
+  @@index([userId])
 }
 
 /// One row per browser/device a user has enabled push notifications on (Web Push API). Endpoint
