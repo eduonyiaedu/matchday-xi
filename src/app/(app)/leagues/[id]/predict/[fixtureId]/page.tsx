@@ -73,6 +73,7 @@ export default async function LeaguePredictPage({
         squadPlayerId: p.squadPlayerId,
         name: p.squadPlayer?.name ?? p.rawName,
         shirtNumber: p.squadPlayer?.shirtNumber ?? null,
+        isGoalkeeper: p.isGoalkeeper,
       })) ?? []
     : undefined;
 

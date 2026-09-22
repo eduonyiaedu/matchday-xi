@@ -42,6 +42,7 @@ interface OfficialStarter {
   squadPlayerId: string | null;
   name: string;
   shirtNumber: number | null;
+  isGoalkeeper: boolean;
 }
 
 const OUTFIELD_POSITION_LABELS: { position: SquadPlayer["position"]; label: string }[] = [
@@ -213,6 +214,11 @@ export function PitchBuilder({
   const correctBySlot = new Map(existingSlots.map((s) => [s.slotIndex, s.isCorrect]));
   const slotPositions = FORMATION_LAYOUTS[formation];
   const statPlayer = statPlayerId ? playerById.get(statPlayerId) : null;
+  // A scored fixture the user never predicted for at all (visible via the history list, which now
+  // surfaces these instead of skipping them) — pointsAwarded is null since there's no Prediction
+  // row, but it's honestly 0, not "nothing to show."
+  const noSubmission = scored && existingSlots.length === 0;
+  const displayPoints = pointsAwarded ?? (noSubmission ? 0 : null);
 
   // "Who else started" reveal — no true positional mapping exists (outfield slots are
   // free-form), so this pairs each miss with an official starter not already matched to one of
@@ -220,6 +226,20 @@ export function PitchBuilder({
   // a specific tactical swap.
   const revealFor = useMemo(() => {
     if (!scored || !officialLineup) return new Map<number, OfficialStarter>();
+
+    // No prediction was ever submitted for this fixture — every slot is a "miss" by definition,
+    // not just the ones existingSlots would normally mark isCorrect===false (existingSlots is
+    // empty here, so there's nothing to check against). Pair the flagged goalkeeper with slot 0
+    // and everyone else in order, same honest "who else played" framing as the real reveal below.
+    if (existingSlots.length === 0) {
+      const goalkeeper = officialLineup.find((p) => p.isGoalkeeper);
+      const others = officialLineup.filter((p) => p !== goalkeeper);
+      const map = new Map<number, OfficialStarter>();
+      if (goalkeeper) map.set(0, goalkeeper);
+      others.forEach((p, i) => map.set(i + 1, p));
+      return map;
+    }
+
     const correctIds = new Set(
       existingSlots.filter((s) => s.isCorrect).map((s) => s.squadPlayerId),
     );
@@ -308,12 +328,17 @@ export function PitchBuilder({
   return (
     <div className="flex flex-col gap-4 md:flex-row md:items-start md:gap-6">
       <div className="flex flex-1 flex-col gap-4">
-        {scored && pointsAwarded !== null && (
+        {scored && displayPoints !== null && (
           <div className="flex flex-wrap items-center gap-3">
             <div className="text-center">
-              <p className="font-heading text-4xl font-semibold text-gold">+{pointsAwarded}</p>
+              <p className="font-heading text-4xl font-semibold text-gold">+{displayPoints}</p>
               <p className="font-mono text-[9px] tracking-[0.14em] text-muted-foreground uppercase">Points</p>
             </div>
+            {noSubmission && (
+              <p className="text-sm text-muted-foreground">
+                You didn&apos;t submit a prediction — here&apos;s who started.
+              </p>
+            )}
             {isPerfectXi && (
               <Button variant="outline" size="sm" onClick={() => setTakeoverOpen(true)}>
                 See the Perfect XI moment
@@ -382,14 +407,17 @@ export function PitchBuilder({
               <button
                 key={slotIndex}
                 type="button"
-                disabled={scored ? isCorrect !== false : locked}
+                disabled={scored ? isCorrect === true : locked}
                 onClick={() => {
                   if (longPressFiredRef.current) {
                     longPressFiredRef.current = false;
                     return;
                   }
                   if (scored) {
-                    if (isCorrect === false) setRevealed((r) => ({ ...r, [slotIndex]: !r[slotIndex] }));
+                    // isCorrect is undefined (not false) for a slot from a never-submitted
+                    // prediction — treat that the same as an explicit miss, not like a correct
+                    // pick, so the reveal toggle still works with zero submitted slots.
+                    if (isCorrect !== true) setRevealed((r) => ({ ...r, [slotIndex]: !r[slotIndex] }));
                     return;
                   }
                   if (!locked) setDrawerSlot(slotIndex);
@@ -409,7 +437,7 @@ export function PitchBuilder({
                   className={cn(
                     "rounded-xl",
                     scored && isCorrect === true && "shadow-[0_0_0_2px_var(--gold)]",
-                    scored && isCorrect === false && !reveal && "opacity-70",
+                    scored && isCorrect !== true && !reveal && "opacity-70",
                     !scored && !player && !locked && "mdxi-pulse rounded-[11px]",
                     !scored && player && "motion-safe:animate-[mdxiPop_260ms_cubic-bezier(0.2,0.9,0.3,1)]",
                   )}
@@ -430,7 +458,7 @@ export function PitchBuilder({
                 >
                   {shownName}
                 </span>
-                {scored && isCorrect === false && (
+                {scored && isCorrect !== true && (
                   <span className="font-mono text-[7.5px] tracking-[0.14em] text-chalk/40 uppercase">
                     {reveal ? "Started" : "Tap"}
                   </span>
@@ -441,7 +469,7 @@ export function PitchBuilder({
         </div>
 
         {locked ? (
-          existingSlots.length === 0 ? (
+          existingSlots.length === 0 && !scored ? (
             <p className="text-center text-sm text-muted-foreground">
               You didn&apos;t submit a prediction before this fixture locked.
             </p>

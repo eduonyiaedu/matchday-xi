@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LocalTime } from "@/components/ui/local-time";
 import { JoinLeagueButton } from "@/components/leagues/join-league-button";
 import { MembershipRequests } from "@/components/leagues/membership-requests";
@@ -48,7 +49,7 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
     [fixtures, leaderboardRows, history] = await Promise.all([
       getEligibleFixtures(myMembership.teamId, league),
       getLeagueLeaderboardRows(league.id),
-      getLeagueHistory(league.id, user.id),
+      getLeagueHistory(league.id, user.id, myMembership.teamId, league),
     ]);
     const next = await getNextEligibleFixture(myMembership.teamId);
     nextFixtureId = next?.id ?? null;
@@ -116,111 +117,135 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
       )}
 
       {isApproved && (
-        <div>
-          <h2 className="mb-2 text-lg font-semibold">Predict in this league</h2>
-          {fixtures.length === 0 && (
-            <p className="text-sm text-muted-foreground">No eligible fixtures right now.</p>
-          )}
-          <div className="flex flex-col gap-2">
-            {fixtures.map((f) => {
-              const locked = f.status !== "SCHEDULED" || new Date() >= f.lockAt;
-              const isNext = f.id === nextFixtureId;
-              const windowOpen = isPredictionWindowOpen(f);
-              const actionable = !locked && isNext && windowOpen;
-              return (
-                <Card key={f.id}>
-                  <CardHeader className="flex flex-row items-center justify-between">
-                    <div>
-                      <CardTitle className="text-base">
-                        {f.homeTeam.name} vs {f.awayTeam.name}
-                      </CardTitle>
-                      <CardDescription>
-                        <LocalTime iso={f.kickoffAt.toISOString()} />
-                      </CardDescription>
-                      <FixtureEligibilityBadge
-                        locked={locked}
-                        isNext={isNext}
-                        windowOpen={windowOpen}
-                        opensAt={predictionOpensAt(f)}
-                      />
-                    </div>
-                    {locked && (
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline">Locked</Badge>
-                      </div>
-                    )}
-                  </CardHeader>
-                  <CardContent>
-                    {locked || actionable ? (
-                      <Button asChild size="sm">
-                        <Link href={`/leagues/${league.id}/predict/${f.id}`}>
-                          {locked ? "View" : "Build lineup"}
-                        </Link>
-                      </Button>
-                    ) : (
-                      <Button disabled size="sm" variant="outline">
-                        {isNext ? "Opens soon" : "Opens 24hrs before kickoff"}
-                      </Button>
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        </div>
-      )}
+        <Tabs defaultValue="fixtures">
+          <TabsList>
+            <TabsTrigger value="fixtures">Fixtures</TabsTrigger>
+            <TabsTrigger value="history">History</TabsTrigger>
+          </TabsList>
 
-      {isApproved && (
-        <div>
-          <h2 className="mb-2 text-lg font-semibold">Your history in this league</h2>
-          {history.length === 0 && (
-            <Card>
-              <CardContent className="py-7 text-center text-sm text-muted-foreground">
-                No scored predictions yet.
-              </CardContent>
-            </Card>
-          )}
-          <div className="flex flex-col gap-2">
-            {history.map((p) => (
-              <Link key={p.id} href={`/leagues/${league.id}/predict/${p.fixtureId}`}>
-                <Card className="transition-colors hover:bg-white/5">
-                  <CardHeader className="flex flex-row items-center justify-between">
-                    <div>
-                      <CardTitle className="text-base">
-                        {p.fixture.homeTeam.name} vs {p.fixture.awayTeam.name}
-                      </CardTitle>
-                      <CardDescription>
-                        <LocalTime iso={p.fixture.kickoffAt.toISOString()} dateOnly />
-                      </CardDescription>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {p.fixture.status === "VOIDED" ? (
-                        <Badge variant="outline">Voided</Badge>
-                      ) : (
-                        <>
-                          <Badge>{p.pointsAwarded} pts</Badge>
-                          {p.isPerfectXi && <Badge variant="secondary">Perfect XI</Badge>}
-                        </>
+          <TabsContent value="fixtures">
+            {fixtures.length === 0 && (
+              <p className="text-sm text-muted-foreground">No eligible fixtures right now.</p>
+            )}
+            <div className="flex flex-col gap-2">
+              {fixtures.map((f) => {
+                const locked = f.status !== "SCHEDULED" || new Date() >= f.lockAt;
+                const isNext = f.id === nextFixtureId;
+                const windowOpen = isPredictionWindowOpen(f);
+                const actionable = !locked && isNext && windowOpen;
+                return (
+                  <Card key={f.id}>
+                    <CardHeader className="flex flex-row items-center justify-between">
+                      <div>
+                        <CardTitle className="text-base">
+                          {f.homeTeam.name} vs {f.awayTeam.name}
+                        </CardTitle>
+                        <CardDescription>
+                          <LocalTime iso={f.kickoffAt.toISOString()} />
+                        </CardDescription>
+                        <FixtureEligibilityBadge
+                          locked={locked}
+                          isNext={isNext}
+                          windowOpen={windowOpen}
+                          opensAt={predictionOpensAt(f)}
+                        />
+                      </div>
+                      {locked && (
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline">Locked</Badge>
+                        </div>
                       )}
-                    </div>
-                  </CardHeader>
-                </Card>
-              </Link>
-            ))}
-          </div>
-        </div>
+                    </CardHeader>
+                    <CardContent>
+                      {locked || actionable ? (
+                        <Button asChild size="sm">
+                          <Link href={`/leagues/${league.id}/predict/${f.id}`}>
+                            {locked ? "View" : "Build lineup"}
+                          </Link>
+                        </Button>
+                      ) : (
+                        <Button disabled size="sm" variant="outline">
+                          {isNext ? "Opens soon" : "Opens 24hrs before kickoff"}
+                        </Button>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="history">
+            {history.length === 0 && (
+              <Card>
+                <CardContent className="py-7 text-center text-sm text-muted-foreground">
+                  No scored predictions yet.
+                </CardContent>
+              </Card>
+            )}
+            <div className="flex flex-col gap-2">
+              {history.map(({ fixture, prediction }) => (
+                <Link key={fixture.id} href={`/leagues/${league.id}/predict/${fixture.id}`}>
+                  <Card className="transition-colors hover:bg-white/5">
+                    <CardHeader className="flex flex-row items-center justify-between">
+                      <div>
+                        <CardTitle className="text-base">
+                          {fixture.homeTeam.name} vs {fixture.awayTeam.name}
+                        </CardTitle>
+                        <CardDescription>
+                          <LocalTime iso={fixture.kickoffAt.toISOString()} dateOnly />
+                        </CardDescription>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {fixture.status === "VOIDED" ? (
+                          <Badge variant="outline">Voided</Badge>
+                        ) : prediction ? (
+                          <>
+                            <Badge>{prediction.pointsAwarded} pts</Badge>
+                            {prediction.isPerfectXi && <Badge variant="secondary">Perfect XI</Badge>}
+                          </>
+                        ) : (
+                          <>
+                            <Badge variant="secondary">0 pts</Badge>
+                            <Badge variant="outline">Missed</Badge>
+                          </>
+                        )}
+                      </div>
+                    </CardHeader>
+                  </Card>
+                </Link>
+              ))}
+            </div>
+          </TabsContent>
+        </Tabs>
       )}
     </div>
   );
 }
 
-async function getLeagueHistory(leagueId: string, userId: string) {
-  return prisma.prediction.findMany({
-    where: { privateLeagueId: leagueId, userId, pointsAwarded: { not: null } },
-    include: { fixture: { include: { homeTeam: true, awayTeam: true } } },
-    orderBy: { fixture: { kickoffAt: "desc" } },
+async function getLeagueHistory(
+  leagueId: string,
+  userId: string,
+  teamId: string,
+  league: { startDate: Date; endDate: Date },
+) {
+  // Fixture-driven (was Prediction-driven) — same fix as fixtures/history/page.tsx: a scored
+  // fixture the user never predicted for used to be silently skipped instead of showing as missed.
+  const fixtures = await prisma.fixture.findMany({
+    where: {
+      status: { in: ["SCORED", "VOIDED"] },
+      OR: [{ homeTeamId: teamId }, { awayTeamId: teamId }],
+      kickoffAt: { gte: league.startDate, lt: league.endDate },
+    },
+    include: { homeTeam: true, awayTeam: true },
+    orderBy: { kickoffAt: "desc" },
     take: 50,
   });
+  const predictions = await prisma.prediction.findMany({
+    where: { privateLeagueId: leagueId, userId, fixtureId: { in: fixtures.map((f) => f.id) } },
+  });
+  const predictionByFixtureId = new Map(predictions.map((p) => [p.fixtureId, p]));
+  return fixtures.map((fixture) => ({ fixture, prediction: predictionByFixtureId.get(fixture.id) ?? null }));
 }
 
 async function getEligibleFixtures(
