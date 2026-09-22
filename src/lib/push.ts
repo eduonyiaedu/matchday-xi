@@ -22,19 +22,23 @@ export interface PushPayload {
 
 /**
  * Best-effort push send — never throws. Missing VAPID keys just logs (matches the pattern in
- * lib/notify.ts): losing a notification is far better than breaking the cron job that triggered
- * it. A subscription that comes back expired (410/404) is deleted so it stops being retried.
+ * lib/notify.ts) and returns true (treated as handled — retrying with no keys configured does
+ * nothing). A subscription that comes back expired (410/404) is deleted so it stops being
+ * retried. Returns false only when at least one subscription hit a real, non-expiry send error,
+ * so callers can clear their dedup flag and let the next sweep retry instead of permanently
+ * treating a transient webpush outage as "delivered" (same reasoning as lib/notify.ts).
  */
-export async function sendPushToUsers(userIds: string[], payload: PushPayload): Promise<void> {
-  if (userIds.length === 0) return;
+export async function sendPushToUsers(userIds: string[], payload: PushPayload): Promise<boolean> {
+  if (userIds.length === 0) return true;
   if (!ensureConfigured()) {
     console.warn(`[push] VAPID keys not set — skipping push to ${userIds.length} user(s): ${payload.title}`);
-    return;
+    return true;
   }
 
   const subscriptions = await prisma.pushSubscription.findMany({ where: { userId: { in: userIds } } });
   const body = JSON.stringify(payload);
 
+  let hadRealFailure = false;
   await Promise.all(
     subscriptions.map(async (sub) => {
       try {
@@ -45,8 +49,10 @@ export async function sendPushToUsers(userIds: string[], payload: PushPayload): 
           await prisma.pushSubscription.delete({ where: { id: sub.id } }).catch(() => {});
         } else {
           console.error("[push] send failed:", error);
+          hadRealFailure = true;
         }
       }
     }),
   );
+  return !hadRealFailure;
 }

@@ -8,7 +8,9 @@ const LOCK_WARNING_MINUTES = 30;
  * Push notifications scoped to a user's own favorite team (global scope) — a private-league
  * member predicting for a different club isn't covered here yet, since a single fixture can be
  * "open" for many different leagues on different schedules. Runs alongside lock-sweep (same 5-min
- * cadence already in place), so both dedup fields below only need coarse (~5 min) precision.
+ * cadence already in place). Each fixture's dedup check-and-claim is lock-guarded the same way as
+ * lineup-check.ts/matchday-notify.ts, since this job's own cron route documents that a busy tick
+ * can exceed the 5-min trigger interval and overlap with the next one.
  */
 export async function notifySweep() {
   const now = new Date();
@@ -24,16 +26,34 @@ export async function notifySweep() {
     const opensAt = new Date(fixture.kickoffAt.getTime() - 24 * 60 * 60 * 1000);
     if (now < opensAt) continue;
 
-    const users = await prisma.user.findMany({
-      where: { favoriteTeamId: { in: [fixture.homeTeamId, fixture.awayTeamId] } },
-      select: { id: true },
+    // Locked + re-checked inside the transaction: this job shares lock-sweep's 5-min cron tick
+    // and has no hard time budget of its own (see the cron route's comment on maxDuration), so an
+    // overlapping/retried invocation for the same fixture could otherwise read openNotifiedAt as
+    // null twice before either commits and double-push the same users. The send itself happens
+    // after commit, same reasoning as lineup-check.ts/matchday-notify.ts.
+    const userIds = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"notify-open:" + fixture.id}))`;
+      const fresh = await tx.fixture.findUniqueOrThrow({ where: { id: fixture.id } });
+      if (fresh.openNotifiedAt) return null;
+
+      const users = await tx.user.findMany({
+        where: { favoriteTeamId: { in: [fixture.homeTeamId, fixture.awayTeamId] } },
+        select: { id: true },
+      });
+      await tx.fixture.update({ where: { id: fixture.id }, data: { openNotifiedAt: now } });
+      return users.map((u) => u.id);
     });
-    await sendPushToUsers(users.map((u) => u.id), {
+    if (!userIds) continue; // already handled by a prior/concurrent run
+
+    const sent = await sendPushToUsers(userIds, {
       title: "Predictions are open",
       body: `${fixture.homeTeam.shortName ?? fixture.homeTeam.name} vs ${fixture.awayTeam.shortName ?? fixture.awayTeam.name} — build your lineup before it locks.`,
       url: `/predict/${fixture.id}`,
     });
-    await prisma.fixture.update({ where: { id: fixture.id }, data: { openNotifiedAt: now } });
+    if (!sent) {
+      await prisma.fixture.update({ where: { id: fixture.id }, data: { openNotifiedAt: null } });
+      continue;
+    }
     opened++;
   }
 
@@ -48,27 +68,40 @@ export async function notifySweep() {
     include: { homeTeam: true, awayTeam: true },
   });
   for (const fixture of candidatesForLockWarning) {
-    const favoriteUsers = await prisma.user.findMany({
-      where: { favoriteTeamId: { in: [fixture.homeTeamId, fixture.awayTeamId] } },
-      select: { id: true },
-    });
-    const alreadyPredicted = await prisma.prediction.findMany({
-      where: {
-        fixtureId: fixture.id,
-        scopeKey: scopeKeyFor(null),
-        userId: { in: favoriteUsers.map((u) => u.id) },
-      },
-      select: { userId: true },
-    });
-    const predictedSet = new Set(alreadyPredicted.map((p) => p.userId));
-    const toNotify = favoriteUsers.map((u) => u.id).filter((id) => !predictedSet.has(id));
+    const toNotify = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"notify-lock-warn:" + fixture.id}))`;
+      const fresh = await tx.fixture.findUniqueOrThrow({ where: { id: fixture.id } });
+      if (fresh.lockWarningNotifiedAt) return null;
 
-    await sendPushToUsers(toNotify, {
+      const favoriteUsers = await tx.user.findMany({
+        where: { favoriteTeamId: { in: [fixture.homeTeamId, fixture.awayTeamId] } },
+        select: { id: true },
+      });
+      const alreadyPredicted = await tx.prediction.findMany({
+        where: {
+          fixtureId: fixture.id,
+          scopeKey: scopeKeyFor(null),
+          userId: { in: favoriteUsers.map((u) => u.id) },
+        },
+        select: { userId: true },
+      });
+      const predictedSet = new Set(alreadyPredicted.map((p) => p.userId));
+      const notified = favoriteUsers.map((u) => u.id).filter((id) => !predictedSet.has(id));
+
+      await tx.fixture.update({ where: { id: fixture.id }, data: { lockWarningNotifiedAt: now } });
+      return notified;
+    });
+    if (!toNotify) continue; // already handled by a prior/concurrent run
+
+    const sent = await sendPushToUsers(toNotify, {
       title: "Lock in 30 minutes",
       body: `${fixture.homeTeam.shortName ?? fixture.homeTeam.name} vs ${fixture.awayTeam.shortName ?? fixture.awayTeam.name} closes for predictions soon.`,
       url: `/predict/${fixture.id}`,
     });
-    await prisma.fixture.update({ where: { id: fixture.id }, data: { lockWarningNotifiedAt: now } });
+    if (!sent) {
+      await prisma.fixture.update({ where: { id: fixture.id }, data: { lockWarningNotifiedAt: null } });
+      continue;
+    }
     lockWarned++;
   }
 

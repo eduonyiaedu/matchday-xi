@@ -24,9 +24,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Only the league creator can respond to requests" }, { status: 403 });
   }
 
-  const updated = await prisma.privateLeagueMembership.update({
-    where: { id: membership.id },
-    data: { status: parsed.data.approve ? "APPROVED" : "DENIED", respondedAt: new Date() },
+  // Same lock key as /api/leagues/[id]/join, so an approval racing a concurrent join-request
+  // upsert for this (league, user) pair serializes through one mutual-exclusion point instead of
+  // each side reading stale state and the join's upsert clobbering this approval (or vice versa).
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"league-join:" + membership.leagueId + ":" + membership.userId}))`;
+    return tx.privateLeagueMembership.update({
+      where: { id: membership.id },
+      data: { status: parsed.data.approve ? "APPROVED" : "DENIED", respondedAt: new Date() },
+    });
   });
 
   return NextResponse.json({ membership: updated });

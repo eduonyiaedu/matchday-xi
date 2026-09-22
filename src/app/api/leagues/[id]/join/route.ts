@@ -37,21 +37,29 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     teamId = team.id;
   }
 
-  const existing = await prisma.privateLeagueMembership.findUnique({
-    where: { leagueId_userId: { leagueId, userId: user.id } },
+  // Permanent once approved — but free to change on any attempt before that (still PENDING, or
+  // after a DENIED response), per founder direction. The check and the write are lock-guarded
+  // together: without it, a join request racing the league creator's concurrent approval
+  // (/api/leagues/membership) could read "not yet approved" and then blindly upsert PENDING over
+  // a membership that became APPROVED in between, reverting the approval and reassigning the
+  // "permanent" team — re-checking status fresh after acquiring the lock closes that gap.
+  const membership = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"league-join:" + leagueId + ":" + user.id}))`;
+    const fresh = await tx.privateLeagueMembership.findUnique({
+      where: { leagueId_userId: { leagueId, userId: user.id } },
+    });
+    if (fresh?.status === "APPROVED") return null;
+
+    return tx.privateLeagueMembership.upsert({
+      where: { leagueId_userId: { leagueId, userId: user.id } },
+      update: { teamId, status: "PENDING", respondedAt: null },
+      create: { leagueId, userId: user.id, teamId, status: "PENDING" },
+    });
   });
 
-  // Permanent once approved — but free to change on any attempt before that (still PENDING, or
-  // after a DENIED response), per founder direction.
-  if (existing?.status === "APPROVED") {
+  if (!membership) {
     return NextResponse.json({ error: "You're already an approved member — your team is locked in" }, { status: 409 });
   }
-
-  const membership = await prisma.privateLeagueMembership.upsert({
-    where: { leagueId_userId: { leagueId, userId: user.id } },
-    update: { teamId, status: "PENDING", respondedAt: null },
-    create: { leagueId, userId: user.id, teamId, status: "PENDING" },
-  });
 
   return NextResponse.json({ membership });
 }

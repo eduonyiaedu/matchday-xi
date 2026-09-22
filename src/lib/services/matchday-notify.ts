@@ -111,11 +111,25 @@ export async function matchdayNotifySweep() {
       if (!plan) continue; // Already handled by a prior/concurrent run.
 
       if (plan.globalPushes) {
-        await sendPush(plan.globalPushes);
+        const sent = await sendPush(plan.globalPushes);
+        // Only the global send failed — clear just its own flag so the next run retries it.
+        // Safe even if leagues were already notified this tick: their dedup rows still exist, so
+        // the per-league loop below re-checks `alreadySent` and correctly skips them next time.
+        if (!sent) {
+          await prisma.fixture.update({ where: { id: fixture.id }, data: { matchdayNotifiedAt: null } });
+        }
       }
       for (const leaguePush of plan.leaguePushes) {
-        await sendPush(leaguePush);
-        leaguesNotified++;
+        const sent = await sendPush(leaguePush);
+        if (!sent) {
+          // The dedup row was created inside the transaction regardless of send outcome — delete
+          // it so this specific league is retried next run instead of permanently skipped.
+          await prisma.privateLeagueMatchdayNotification
+            .delete({ where: { fixtureId_leagueId: { fixtureId: fixture.id, leagueId: leaguePush.leagueId } } })
+            .catch(() => {});
+        } else {
+          leaguesNotified++;
+        }
       }
       fixturesProcessed++;
     } catch (error) {
@@ -160,10 +174,12 @@ async function buildGlobalPush(
   };
 }
 
-async function sendPush(plan: PendingPush): Promise<void> {
+/** Returns false if either half of the send had a real failure, so the caller can retry. */
+async function sendPush(plan: PendingPush): Promise<boolean> {
   const base: Omit<PushPayload, "body"> = { title: "It's Matchday!", url: plan.url };
-  await sendPushToUsers(plan.notPredicted, { ...base, body: plan.notPredictedBody });
-  await sendPushToUsers(plan.predicted, { ...base, body: plan.predictedBody });
+  const sentNotPredicted = await sendPushToUsers(plan.notPredicted, { ...base, body: plan.notPredictedBody });
+  const sentPredicted = await sendPushToUsers(plan.predicted, { ...base, body: plan.predictedBody });
+  return sentNotPredicted && sentPredicted;
 }
 
 // Matches the app's own "day/month/year HH:mm (HH:mm GMT)" convention (see ui/local-time.tsx) as
