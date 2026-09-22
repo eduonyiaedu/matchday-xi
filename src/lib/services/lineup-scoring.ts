@@ -119,18 +119,52 @@ export async function applyOfficialLineup(
     // Sent after the transaction commits, and guarded by the same "wasn't already SCORED" check
     // computed inside it — re-saving an already-scored lineup (e.g. an admin correction) never
     // re-notifies. Kept outside the transaction since a push-delivery failure shouldn't roll back
-    // scoring that already committed.
+    // scoring that already committed. Grouped by scope so each recipient lands on the scored view
+    // that's actually theirs — a global predictor doesn't want a private league's URL and vice
+    // versa (previously this queried every predictor regardless of scope and sent one shared
+    // hardcoded /history link to all of them).
     const fixture = await prisma.fixture.findUniqueOrThrow({
       where: { id: fixtureId },
       include: { homeTeam: true, awayTeam: true },
     });
-    const allPredictors = await prisma.prediction.findMany({ where: { fixtureId }, select: { userId: true } });
-    const userIds = [...new Set(allPredictors.map((p) => p.userId))];
-    await sendPushToUsers(userIds, {
-      title: "Scoring is in",
-      body: `${fixture.homeTeam.shortName ?? fixture.homeTeam.name} vs ${fixture.awayTeam.shortName ?? fixture.awayTeam.name} has been scored.`,
-      url: "/history",
+    const matchLabel = `${fixture.homeTeam.shortName ?? fixture.homeTeam.name} vs ${fixture.awayTeam.shortName ?? fixture.awayTeam.name}`;
+
+    const allPredictors = await prisma.prediction.findMany({
+      where: { fixtureId },
+      select: { userId: true, privateLeagueId: true },
     });
+    const userIdsByScope = new Map<string | null, string[]>();
+    for (const p of allPredictors) {
+      const ids = userIdsByScope.get(p.privateLeagueId) ?? [];
+      if (!ids.includes(p.userId)) ids.push(p.userId);
+      userIdsByScope.set(p.privateLeagueId, ids);
+    }
+
+    const globalUserIds = userIdsByScope.get(null);
+    if (globalUserIds && globalUserIds.length > 0) {
+      await sendPushToUsers(globalUserIds, {
+        title: "Matchday XI",
+        body: `Scoring is in\n${matchLabel} has been scored.`,
+        url: `/predict/${fixtureId}`,
+      });
+    }
+
+    const leagueIds = [...userIdsByScope.keys()].filter((id): id is string => id !== null);
+    if (leagueIds.length > 0) {
+      const leagues = await prisma.privateLeague.findMany({
+        where: { id: { in: leagueIds } },
+        select: { id: true, name: true },
+      });
+      const leagueNameById = new Map(leagues.map((l) => [l.id, l.name]));
+      for (const leagueId of leagueIds) {
+        const leagueName = leagueNameById.get(leagueId) ?? "Private League";
+        await sendPushToUsers(userIdsByScope.get(leagueId)!, {
+          title: "Matchday XI",
+          body: `Scoring is in\n${leagueName}: ${matchLabel} has been scored.`,
+          url: `/leagues/${leagueId}/predict/${fixtureId}`,
+        });
+      }
+    }
   }
 
   return { resolvedCount: resolvedPlayerIds.length, predictionsScored, bothDone };

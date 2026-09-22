@@ -138,6 +138,11 @@ export async function POST(request: NextRequest) {
     (await prisma.prediction.count({ where: { userId: user.id, privateLeagueId: null } })) === 0;
 
   const scopeKey = scopeKeyFor(privateLeagueId);
+  // Canonical order-independent signature — matches this app's own scoring rule that slot
+  // position never affects correctness, only which 11 players were picked. Lets the lock-time
+  // "X% of users picked the exact lineup you did" nudge group predictions by identical XI without
+  // caring which slot each player was assigned to.
+  const lineupSignature = [...playerIds].sort().join(",");
   const prediction = await prisma.$transaction(async (tx) => {
     // A real `upsert` (single atomic ON CONFLICT, not a find-then-branch) — two concurrent submits
     // of a user's first-ever prediction for this fixture (a double-tap, or a client retry) both
@@ -145,8 +150,8 @@ export async function POST(request: NextRequest) {
     // uncaught unique-constraint error instead of the same idempotent success the winner got.
     const upserted = await tx.prediction.upsert({
       where: { userId_fixtureId_scopeKey: { userId: user.id, fixtureId, scopeKey } },
-      update: { teamId, formation, updatedAt: new Date() },
-      create: { userId: user.id, fixtureId, teamId, formation, privateLeagueId, scopeKey },
+      update: { teamId, formation, lineupSignature, updatedAt: new Date() },
+      create: { userId: user.id, fixtureId, teamId, formation, privateLeagueId, scopeKey, lineupSignature },
     });
 
     await tx.predictionSlot.deleteMany({ where: { predictionId: upserted.id } });

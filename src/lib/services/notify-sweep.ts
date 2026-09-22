@@ -46,8 +46,8 @@ export async function notifySweep() {
     if (!userIds) continue; // already handled by a prior/concurrent run
 
     const sent = await sendPushToUsers(userIds, {
-      title: "Predictions are open",
-      body: `${fixture.homeTeam.shortName ?? fixture.homeTeam.name} vs ${fixture.awayTeam.shortName ?? fixture.awayTeam.name} — build your lineup before it locks.`,
+      title: "Matchday XI",
+      body: `Predictions are open\n${fixture.homeTeam.shortName ?? fixture.homeTeam.name} vs ${fixture.awayTeam.shortName ?? fixture.awayTeam.name} — build your lineup before it locks.`,
       url: `/predict/${fixture.id}`,
     });
     if (!sent) {
@@ -94,8 +94,8 @@ export async function notifySweep() {
     if (!toNotify) continue; // already handled by a prior/concurrent run
 
     const sent = await sendPushToUsers(toNotify, {
-      title: "Lock in 30 minutes",
-      body: `${fixture.homeTeam.shortName ?? fixture.homeTeam.name} vs ${fixture.awayTeam.shortName ?? fixture.awayTeam.name} closes for predictions soon.`,
+      title: "Matchday XI",
+      body: `Lock in 30 minutes\n${fixture.homeTeam.shortName ?? fixture.homeTeam.name} vs ${fixture.awayTeam.shortName ?? fixture.awayTeam.name} closes for predictions soon.`,
       url: `/predict/${fixture.id}`,
     });
     if (!sent) {

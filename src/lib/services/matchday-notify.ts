@@ -12,11 +12,11 @@ interface PendingPush {
 }
 
 /**
- * The 11am UTC "it's matchday" push (rulebook §5) — one of two messages depending on whether the
+ * The 8am UTC "it's matchday" push (rulebook §5) — one of two messages depending on whether the
  * recipient has already submitted a prediction for today's fixture: a nudge to pick one, or a
  * "good luck" for the XI they already picked. A once-daily job, entirely separate from
  * notify-sweep's 5-minute cadence, so it needs its own cron-job.org schedule entry hitting
- * /api/cron/matchday-notify at "0 11 * * *" (see that route's comment).
+ * /api/cron/matchday-notify at "0 8 * * *" (see that route's comment).
  */
 export async function matchdayNotifySweep() {
   const now = new Date();
@@ -94,8 +94,8 @@ export async function matchdayNotifySweep() {
               leagueId,
               notPredicted: userIds.filter((id) => !predictedSet.has(id)),
               predicted: userIds.filter((id) => predictedSet.has(id)),
-              notPredictedBody: `${leagueName}: It's Matchday today! Have you picked your Matchday XI? (${fixtureLabel})`,
-              predictedBody: `${leagueName}: It's Matchday today! Good luck with your selected Matchday XI! (${fixtureLabel})`,
+              notPredictedBody: `It's Matchday!\n${leagueName}: Have you picked your Matchday XI? (${fixtureLabel})`,
+              predictedBody: `It's Matchday!\n${leagueName}: Good luck with your selected Matchday XI! (${fixtureLabel})`,
               url: `/leagues/${leagueId}/predict/${fixture.id}`,
             });
             await tx.privateLeagueMatchdayNotification.create({ data: { fixtureId: fixture.id, leagueId } });
@@ -168,15 +168,15 @@ async function buildGlobalPush(
   return {
     notPredicted: allIds.filter((id) => !predictedSet.has(id)),
     predicted: allIds.filter((id) => predictedSet.has(id)),
-    notPredictedBody: `It's Matchday today! Have you picked your Matchday XI? (${fixtureLabel})`,
-    predictedBody: `It's Matchday today! Good luck with your selected Matchday XI! (${fixtureLabel})`,
+    notPredictedBody: `It's Matchday!\nHave you picked your Matchday XI? (${fixtureLabel})`,
+    predictedBody: `It's Matchday!\nGood luck with your selected Matchday XI! (${fixtureLabel})`,
     url: `/predict/${fixture.id}`,
   };
 }
 
 /** Returns false if either half of the send had a real failure, so the caller can retry. */
 async function sendPush(plan: PendingPush): Promise<boolean> {
-  const base: Omit<PushPayload, "body"> = { title: "It's Matchday!", url: plan.url };
+  const base: Omit<PushPayload, "body"> = { title: "Matchday XI", url: plan.url };
   const sentNotPredicted = await sendPushToUsers(plan.notPredicted, { ...base, body: plan.notPredictedBody });
   const sentPredicted = await sendPushToUsers(plan.predicted, { ...base, body: plan.predictedBody });
   return sentNotPredicted && sentPredicted;
