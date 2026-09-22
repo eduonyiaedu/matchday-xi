@@ -4,12 +4,16 @@ import { matchPlayerName } from "@/lib/player-matching";
 import { applyOfficialLineup, type LineupEntryInput } from "@/lib/services/lineup-scoring";
 import { sendLineupAlert } from "@/lib/notify";
 
-// Rulebook §6: bounded retry window ~75 to 60 minutes before kickoff, checking every ~10 min.
-// This job runs every 5 min (GitHub Actions granularity) and widens the window slightly (to 55)
-// as a buffer; if nothing is found by then it keeps retrying every 5 min up to kickoff as a
-// safety net beyond the rulebook's typical-case window, then flags for manual review.
-const WINDOW_START_MIN = 75;
-const WINDOW_END_MIN = 55;
+// Rulebook §6: exactly 3 automated attempts per fixture — at ~70 min and ~60 min before kickoff,
+// then once more at kickoff — not continuous polling. The previous design retried every 5 min
+// from kickoff-75 through kickoff, then kept going for a further 6h as a safety net for anything
+// still unresolved; on a busy matchday that plausibly ran up ~100+ requests against API-Football's
+// ~100/day free-tier cap and got the account suspended (confirmed Sep 2026). Index into this array
+// is the fixture's `lineupCheckAttempts` count going into that check, so attempt 1 fires once
+// kickoff is <=70min away, attempt 2 once <=60min away, attempt 3 once kickoff has passed. If the
+// 3rd attempt still finds nothing, the fixture is flagged NEEDS_MANUAL_REVIEW and the founder is
+// alerted — no further automated attempts are made for it after that.
+const CHECKPOINT_MINUTES_BEFORE_KICKOFF = [70, 60, 0] as const;
 
 async function resolveSquadPlayerId(
   teamId: string,
@@ -57,24 +61,17 @@ async function alertOnce(fixture: { id: string; lineupAlertSentAt: Date | null; 
 
 export async function checkLineupsAndScore() {
   const now = new Date();
-  const windowStart = new Date(now.getTime() + WINDOW_END_MIN * 60_000);
-  const windowEnd = new Date(now.getTime() + WINDOW_START_MIN * 60_000);
 
-  // Eligible: kickoff is between now+55min and now+75min (i.e. we're 55-75 min out), OR we're
-  // already past that window and still missing a lineup (safety-net retries up to kickoff) — and,
-  // per the comment above (which this condition previously didn't actually implement), for a
-  // bounded stretch AFTER kickoff too, since a fixture stuck at LOCKED with kickoffAt now in the
-  // past would otherwise drop out of every future query forever, silently, without ever reaching
-  // the "flag for manual review" branch below.
-  const pastKickoffCutoff = new Date(now.getTime() - 6 * 60 * 60_000);
+  // Attempt N (1-indexed) is due once kickoff is within CHECKPOINT_MINUTES_BEFORE_KICKOFF[N-1]
+  // minutes — expressed here as lineupCheckAttempts === N-1 (i.e. exactly N-1 attempts made so
+  // far) so each fixture gets each checkpoint exactly once, not on every 5-min tick until it fires.
   const fixtures = await prisma.fixture.findMany({
     where: {
       status: { in: ["LOCKED", "LINEUPS_FETCHED", "NEEDS_MANUAL_REVIEW"] },
-      OR: [
-        { kickoffAt: { gte: windowStart, lte: windowEnd } },
-        { kickoffAt: { gt: now, lt: windowStart } },
-        { kickoffAt: { gte: pastKickoffCutoff, lte: now } },
-      ],
+      OR: CHECKPOINT_MINUTES_BEFORE_KICKOFF.map((minutesBefore, attemptsSoFar) => ({
+        lineupCheckAttempts: attemptsSoFar,
+        kickoffAt: { lte: new Date(now.getTime() + minutesBefore * 60_000) },
+      })),
     },
     include: { homeTeam: true, awayTeam: true, officialLineups: true },
   });

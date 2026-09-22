@@ -513,3 +513,20 @@ model JobRun {
 
   @@index([jobName, startedAt])
 }
+
+/// One row per (provider, UTC day), atomically incremented before every outbound call to that
+/// provider so a daily request cap survives Vercel's serverless cold starts (an in-memory counter
+/// wouldn't). Added after API-Football's free-tier ~100-req/day cap got exceeded and the account
+/// suspended — see lib/api-football/client.ts for the enforcing side. `count` is incremented via
+/// upsert (a real atomic UPDATE ... SET count = count + 1 at the DB level, not read-then-write) so
+/// concurrent callers (e.g. the lineup-check cron and an admin manual re-sync firing close
+/// together) can't both slip past the cap.
+model ApiUsageCounter {
+  id        String   @id @default(uuid())
+  provider  String
+  dateUtc   String
+  count     Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@unique([provider, dateUtc])
+}

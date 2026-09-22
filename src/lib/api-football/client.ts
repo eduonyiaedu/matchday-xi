@@ -1,10 +1,33 @@
 /**
  * Thin client for API-Football (official lineups — rulebook §6).
  * Free tier: ~100 requests/day, hence the bounded lineup-check retry window in
- * lib/lineup-service.ts rather than continuous polling.
+ * lib/services/lineup-check.ts rather than continuous polling, AND the daily request cap
+ * enforced below — the retry window alone wasn't enough (see reserveDailyRequestSlot).
  */
 
+import { prisma } from "@/lib/prisma";
+
 const BASE_URL = "https://v3.football.api-sports.io";
+
+// Real free-tier ceiling is ~100/day; capped below that (and kept as an env var so raising it
+// after a paid-tier upgrade is a config change, not a code change) after the ceiling was
+// actually hit and got the account suspended. Tracked in the DB (ApiUsageCounter), not an
+// in-memory counter, since that would reset on every serverless cold start and enforce nothing.
+const DAILY_REQUEST_CAP = Number(process.env.API_FOOTBALL_DAILY_REQUEST_CAP ?? 90);
+
+async function reserveDailyRequestSlot(): Promise<void> {
+  const dateUtc = new Date().toISOString().slice(0, 10);
+  const counter = await prisma.apiUsageCounter.upsert({
+    where: { provider_dateUtc: { provider: "api-football", dateUtc } },
+    update: { count: { increment: 1 } },
+    create: { provider: "api-football", dateUtc, count: 1 },
+  });
+  if (counter.count > DAILY_REQUEST_CAP) {
+    throw new Error(
+      `API-Football daily request cap (${DAILY_REQUEST_CAP}) reached for ${dateUtc} — refusing further calls today.`,
+    );
+  }
+}
 
 export interface ApiFootballLineupPlayer {
   player: { id: number; name: string; number: number | null; pos: string | null };
@@ -37,6 +60,7 @@ class ApiFootballClient {
   }
 
   private async request<T>(path: string): Promise<T> {
+    await reserveDailyRequestSlot();
     const res = await fetch(`${BASE_URL}${path}`, {
       headers: { "x-apisports-key": this.apiKey },
       cache: "no-store",
