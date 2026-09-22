@@ -67,6 +67,7 @@ enum JobName {
   NOTIFY_SWEEP
   SYNC_STANDINGS
   MATCHDAY_NOTIFY
+  PURGE_EXPIRED_ACCOUNTS
 }
 
 enum JobStatus {
@@ -102,6 +103,11 @@ model User {
   ageConfirmedAt       DateTime?
   /// Timestamp the user checked "I agree to the Terms of Service and Privacy Policy" at signup. Captured for compliance records.
   tosConsentedAt       DateTime?
+  /// Set when the user requests account deletion; the account is anonymized (not hard-deleted —
+  /// points/predictions/history stay intact for other users' leaderboards, private leagues, and
+  /// prize-draw records) by the PURGE_EXPIRED_ACCOUNTS cron job once this passes. Logging back in
+  /// before then clears it (see getOrCreateCurrentUser in lib/auth.ts).
+  deletionScheduledAt  DateTime?
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 
@@ -273,6 +279,9 @@ model Fixture {
   /// Set once the "it's matchday" morning nudge (11am UTC, global scope) has gone out, so it only
   /// ever fires once per fixture — see lib/services/matchday-notify.ts.
   matchdayNotifiedAt    DateTime?
+  /// Set once the "you can now share"/"you didn't submit" lock nudge has gone out (global scope
+  /// only), so it only ever fires once per fixture — see lib/services/lock-sweep.ts.
+  lockNotifiedAt        DateTime?
   homeScore             Int?
   awayScore             Int?
   createdAt             DateTime      @default(now())
@@ -327,11 +336,19 @@ model Prediction {
   /// Purely visual — one of the FORMATIONS in lib/validation.ts. Scoring only ever compares
   /// predicted vs. official player-id sets, never slot position, so this never affects points.
   formation       String         @default("4-4-2")
+  /// Canonical order-independent signature (sorted squadPlayerIds joined by comma), computed at
+  /// submission time — lets the "X% of users picked the exact lineup you did" lock nudge group
+  /// predictions by identical XI without caring about slot order. Nullable since predictions
+  /// submitted before this field existed simply won't have one and won't count toward the stat.
+  lineupSignature String?
   submittedAt     DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
   pointsAwarded   Int?
   isPerfectXi     Boolean?
   scoredAt        DateTime?
+  /// Set once the Perfect XI takeover celebration has been shown to the user, so it fires exactly
+  /// once per Perfect XI (a user can earn several across a season) — see (app)/layout.tsx.
+  perfectXiCelebrationShownAt DateTime?
 
   slots PredictionSlot[]
 
@@ -541,4 +558,15 @@ model ApiUsageCounter {
   updatedAt DateTime @updatedAt
 
   @@unique([provider, dateUtc])
+}
+
+/// Feedback captured when a user requests account deletion. `submittedByUserId` is deliberately
+/// a plain string, not a Prisma `@relation`/FK, so this row survives independently of the User
+/// row's eventual anonymization by PURGE_EXPIRED_ACCOUNTS — the founder still gets to read why
+/// someone left even after their account is scrubbed.
+model AccountDeletionFeedback {
+  id                String   @id @default(uuid())
+  submittedByUserId String
+  feedback          String?
+  createdAt         DateTime @default(now())
 }

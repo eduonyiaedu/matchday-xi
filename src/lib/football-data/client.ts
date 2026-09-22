@@ -159,8 +159,12 @@ class FootballDataClient {
    * Season-long goals/assists leaderboard — free tier. No per-match goal-event breakdown exists
    * on this tier (confirmed directly against the live API, Sep 2026): a single match's detail
    * endpoint carries no goal events at all, only this aggregated season total per player.
+   * This endpoint's underlying dataset is every player with >=1 goal (with an assists column
+   * alongside), not a general offensive-contribution list — a 0-goal player with real assists
+   * never appears here no matter how high `limit` goes (confirmed live: limit=100 and limit=500
+   * both returned the same 90 players, matching the response's own `count` field exactly).
    */
-  async getScorers(competitionCode: string, limit = 20): Promise<FootballDataScorer[]> {
+  async getScorers(competitionCode: string, limit = 500): Promise<FootballDataScorer[]> {
     const data = await this.request<{ scorers: FootballDataScorer[] }>(
       `/competitions/${competitionCode}/scorers?limit=${limit}`,
     );

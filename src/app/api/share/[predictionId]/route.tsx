@@ -20,6 +20,7 @@ const PREDICTION_INCLUDE = {
     include: { homeTeam: { select: { name: true, shortName: true } }, awayTeam: { select: { name: true, shortName: true } } },
   },
   slots: { select: { slotIndex: true, isCorrect: true, squadPlayer: { select: { name: true, shirtNumber: true } } } },
+  privateLeague: { select: { name: true } },
 } satisfies Prisma.PredictionInclude;
 
 type PredictionWithRelations = Prisma.PredictionGetPayload<{ include: typeof PREDICTION_INCLUDE }>;
@@ -118,6 +119,23 @@ function header(initials: string, colors: { primary: string; secondary: string }
   );
 }
 
+function leagueLabel(name: string) {
+  return (
+    <div
+      key="league"
+      style={{
+        display: "flex",
+        fontSize: 20,
+        letterSpacing: 2,
+        color: GOLD,
+        marginTop: 14,
+      }}
+    >
+      {`(PRIVATE LEAGUE: ${name.toUpperCase()})`}
+    </div>
+  );
+}
+
 function footer() {
   return (
     <div
@@ -137,6 +155,82 @@ function footer() {
       <span style={{ fontSize: 18, letterSpacing: 2, color: MUTED }}>MATCHDAY-XI.APP</span>
     </div>
   );
+}
+
+// Markings mirror pitch-builder.tsx's pitch (outer border, halfway line, center circle, two
+// penalty boxes), scaled up for this much wider canvas rather than reused at literal pixel
+// values (which would render as a barely-visible dot on a card this size). Positioned with fixed
+// marginLeft/marginTop offsets instead of `transform: translate(...)`, matching this file's own
+// existing technique for the player dots below — Satori's transform support doesn't reliably
+// match a real browser's.
+function pitchMarkings() {
+  return [
+    <div
+      key="outer"
+      style={{
+        position: "absolute",
+        top: 28,
+        left: 28,
+        right: 28,
+        bottom: 28,
+        borderRadius: 8,
+        border: "2px solid rgba(245,243,236,0.22)",
+      }}
+    />,
+    <div
+      key="halfway"
+      style={{
+        position: "absolute",
+        top: "50%",
+        left: 28,
+        right: 28,
+        height: 2,
+        backgroundColor: "rgba(245,243,236,0.22)",
+      }}
+    />,
+    <div
+      key="circle"
+      style={{
+        position: "absolute",
+        top: "50%",
+        left: "50%",
+        marginLeft: -90,
+        marginTop: -90,
+        width: 180,
+        height: 180,
+        borderRadius: "50%",
+        border: "2px solid rgba(245,243,236,0.22)",
+      }}
+    />,
+    <div
+      key="box-top"
+      style={{
+        position: "absolute",
+        top: 28,
+        left: "50%",
+        marginLeft: -210,
+        width: 420,
+        height: 140,
+        borderLeft: "2px solid rgba(245,243,236,0.22)",
+        borderRight: "2px solid rgba(245,243,236,0.22)",
+        borderBottom: "2px solid rgba(245,243,236,0.22)",
+      }}
+    />,
+    <div
+      key="box-bottom"
+      style={{
+        position: "absolute",
+        bottom: 28,
+        left: "50%",
+        marginLeft: -210,
+        width: 420,
+        height: 140,
+        borderLeft: "2px solid rgba(245,243,236,0.22)",
+        borderRight: "2px solid rgba(245,243,236,0.22)",
+        borderTop: "2px solid rgba(245,243,236,0.22)",
+      }}
+    />,
+  ];
 }
 
 function pitchDiagram({
@@ -159,6 +253,7 @@ function pitchDiagram({
         boxShadow: "inset 0 0 0 1.5px rgba(245,243,236,0.14)",
       }}
     >
+      {pitchMarkings()}
       {layout.map((pos) => (
         <div
           key={pos.slotIndex}
@@ -232,6 +327,10 @@ function resultCard({
     <div key="header" style={{ display: "flex" }}>
       {header(initials, colors, prediction.user.username)}
     </div>,
+
+    prediction.privateLeagueId && prediction.privateLeague
+      ? leagueLabel(prediction.privateLeague.name)
+      : null,
 
     <div
       key="headline"
@@ -386,6 +485,10 @@ function predictedLineupCard({
     <div key="header" style={{ display: "flex" }}>
       {header(initials, colors, prediction.user.username)}
     </div>,
+
+    prediction.privateLeagueId && prediction.privateLeague
+      ? leagueLabel(prediction.privateLeague.name)
+      : null,
 
     <div
       key="headline"

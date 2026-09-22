@@ -17,7 +17,15 @@ export async function syncStandingsAndScorers() {
 
   const [standings, scorers] = await Promise.all([
     footballDataClient.getStandings(COMPETITION_CODES.PREMIER_LEAGUE),
-    footballDataClient.getScorers(COMPETITION_CODES.PREMIER_LEAGUE, 20),
+    // 500 is well above any realistic season-end goal-scorer count — confirmed live (Sep 2026)
+    // that this endpoint accepts limits this high with no error, and that its `count` field is
+    // the true total of players with >=1 goal, not a page size (both 100 and 500 returned the
+    // same 90 players). Raised from 20 so the assists column covers every current goal-scorer,
+    // not just the top 20 by goals — see the assists page for the caveat this still can't fix:
+    // a player with 0 goals but real assists never appears here at any limit, since this
+    // endpoint's underlying dataset is goal-scorers with an assists column alongside, not a
+    // general offensive-contribution list.
+    footballDataClient.getScorers(COMPETITION_CODES.PREMIER_LEAGUE, 500),
   ]);
 
   // Runs from both a cron and an admin manual-sync button (see the dual-trigger race class this

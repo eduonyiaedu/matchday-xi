@@ -4,7 +4,6 @@ import { getOrCreateCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ManualSyncButtons } from "@/components/admin/manual-sync-button";
 import { DuplicateFlagList } from "@/components/admin/duplicate-flag-list";
 import { Footer } from "@/components/layout/footer";
 
@@ -23,17 +22,14 @@ export default async function AdminPage() {
   return (
     <div className="flex min-h-svh flex-col">
       <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <Link href="/fixtures" className="text-sm text-muted-foreground hover:underline">
-              ← Back to app
-            </Link>
-            <h1 className="text-2xl font-bold">Admin</h1>
-          </div>
-          <ManualSyncButtons />
+        <div>
+          <Link href="/fixtures" className="text-sm text-muted-foreground hover:underline">
+            ← Back to app
+          </Link>
+          <h1 className="text-2xl font-bold">Admin</h1>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-4">
           <Link href="/admin/lineups">
             <Card className="h-full hover:bg-white/5">
               <CardContent className="flex items-center justify-between pt-4">
@@ -62,6 +58,15 @@ export default async function AdminPage() {
               <CardContent className="pt-4">
                 <p className="font-heading text-sm font-semibold uppercase">Traction metrics</p>
                 <p className="mt-1 text-xs text-muted-foreground">Growth, retention, engagement — exportable</p>
+              </CardContent>
+            </Card>
+          </Link>
+
+          <Link href="/admin/sync">
+            <Card className="h-full hover:bg-white/5">
+              <CardContent className="pt-4">
+                <p className="font-heading text-sm font-semibold uppercase">Sync options</p>
+                <p className="mt-1 text-xs text-muted-foreground">Manually trigger squad/fixture/standings syncs</p>
               </CardContent>
             </Card>
           </Link>
