@@ -51,6 +51,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ user }, { status: 201 });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      // error.meta.target isn't a reliable column-array to distinguish which constraint fired
+      // (id vs. username) — re-query by the actual unique field instead, same pattern already
+      // established in lib/auth.ts for this exact create()-race shape. Two concurrent submits
+      // for this same Google identity (e.g. two tabs open on /auth/consent) both pass the
+      // `existing` check above before either commits — the loser's create() throws P2002 on the
+      // PRIMARY KEY, not necessarily on username, so it shouldn't be told its username was taken
+      // when the real story is "your account already exists, from the other request."
+      const byId = await prisma.user.findUnique({ where: { id: authUser.id } });
+      if (byId) return NextResponse.json({ user: byId });
+
       return NextResponse.json({ error: "That username is already taken." }, { status: 400 });
     }
     throw error;

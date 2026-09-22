@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
+import { safeRedirectPath } from "@/lib/safe-redirect";
 import { GoogleConsentForm } from "@/components/auth/google-consent-form";
 import { Footer } from "@/components/layout/footer";
 
@@ -17,7 +18,9 @@ export default async function GoogleConsentPage({
   searchParams: Promise<{ next?: string }>;
 }) {
   const { next } = await searchParams;
-  const nextPath = next ?? "/home";
+  // Validated as a same-origin relative path — reachable directly (?next=...) as well as via
+  // the callback route, so it needs its own check rather than trusting the callback already did.
+  const nextPath = safeRedirectPath(next);
 
   const supabase = await createClient();
   const {

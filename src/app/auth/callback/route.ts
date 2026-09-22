@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
+import { safeRedirectPath } from "@/lib/safe-redirect";
 
 export const runtime = "nodejs";
 
 /** Handles the redirect back from a magic-link email or an OAuth (Google) sign-in. */
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
-  const next = request.nextUrl.searchParams.get("next") ?? "/home";
+  // Validated as a same-origin relative path — a caller-supplied `next` reaching NextResponse
+  // .redirect() unvalidated would be an open redirect (CWE-601).
+  const next = safeRedirectPath(request.nextUrl.searchParams.get("next"));
   // Only present when this leg started from the signup screen's Google button — see
   // AuthForm.handleGoogle, which can't attach user_metadata to the outbound OAuth request itself.
   const ageConsent = request.nextUrl.searchParams.get("ageConsent");

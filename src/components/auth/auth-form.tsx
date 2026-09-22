@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { safeRedirectPath } from "@/lib/safe-redirect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,10 +13,20 @@ import { Separator } from "@/components/ui/separator";
 
 const USERNAME_PATTERN = /^[a-z0-9_]{3,20}$/;
 
+// Built with URL/searchParams.set (never raw string interpolation) so `next` — a caller-supplied
+// value, already validated as a safe relative path by safeRedirectPath, but validated once
+// doesn't mean safe to concatenate — can never break out of its own query param and inject
+// extra ones into the callback URL Supabase eventually redirects back to.
+function buildCallbackUrl(origin: string, next: string): URL {
+  const url = new URL("/auth/callback", origin);
+  url.searchParams.set("next", next);
+  return url;
+}
+
 export function AuthForm({ mode }: { mode: "login" | "signup" }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const next = searchParams.get("next") ?? "/home";
+  const next = safeRedirectPath(searchParams.get("next"));
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -71,7 +82,7 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
             email,
             password,
             options: {
-              emailRedirectTo: `${window.location.origin}/auth/callback?next=${next}`,
+              emailRedirectTo: buildCallbackUrl(window.location.origin, next).toString(),
               data: signupMetadata(),
             },
           });
@@ -103,7 +114,7 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback?next=${next}`,
+        emailRedirectTo: buildCallbackUrl(window.location.origin, next).toString(),
         ...(consentRequired ? { data: signupMetadata() } : {}),
       },
     });
@@ -125,8 +136,7 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
     // signInWithOAuth can't attach custom user_metadata directly (Google, not us, controls that
     // leg of the redirect), so consent timestamps + username ride along as callback query params
     // instead — the callback route applies them via updateUser() once the session exists.
-    const callbackUrl = new URL("/auth/callback", window.location.origin);
-    callbackUrl.searchParams.set("next", next);
+    const callbackUrl = buildCallbackUrl(window.location.origin, next);
     if (consentRequired) {
       const { ageConfirmedAt, tosConsentedAt } = signupMetadata();
       callbackUrl.searchParams.set("ageConsent", ageConfirmedAt);
