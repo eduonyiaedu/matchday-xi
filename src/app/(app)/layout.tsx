@@ -26,7 +26,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
   if (!user.favoriteTeamId) redirect("/onboarding/select-team");
 
-  await recordDailyLoginIfNeeded(user);
+  // On the one request per UTC day this actually increments, `user.currentStreak` (fetched
+  // above) is already stale — use the returned value for the nav badge, not the pre-call one.
+  const currentStreak = await recordDailyLoginIfNeeded(user);
   await recordSessionActivity(user.id);
 
   // Global --club accent (nav highlight, focus rings via --ring, avatar, pinned leaderboard
@@ -60,7 +62,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <AppNav
         displayName={user.displayName}
         username={user.username}
-        currentStreak={user.currentStreak}
+        currentStreak={currentStreak}
         totalPoints={user.totalPoints}
         role={user.role}
         teamInitials={teamInitials}

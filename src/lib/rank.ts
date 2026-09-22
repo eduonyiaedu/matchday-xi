@@ -33,19 +33,43 @@ export async function computeGlobalRank(
 /**
  * Per-league standings, computed at read time from Prediction.pointsAwarded scoped to that
  * league — same "no materialized leaderboard needed at this scale" reasoning already used for
- * the global/team leaderboards, since private-league membership counts are small.
+ * the global/team leaderboards, since private-league membership counts are small. Every
+ * approved member appears, even with zero points (no prediction yet), so a member's own rank is
+ * always well-defined rather than needing a "not found" fallback. Same 3-level tiebreak as
+ * computeGlobalRank (points, then Perfect XIs, then earliest account creation) — without one,
+ * tied members (the common case at 0/0 early in a season) sorted in whatever order Postgres
+ * happened to return an un-ordered query in, which isn't guaranteed stable across requests and
+ * could visibly swap two tied members' rank on nothing but a reload. getLeagueLeaderboardRows
+ * below builds directly on this so the two never disagree on how to rank a given tied pair.
  */
-export async function computeLeagueStandings(
-  privateLeagueId: string,
-): Promise<{ userId: string; points: number }[]> {
-  const rows = await prisma.prediction.groupBy({
-    by: ["userId"],
-    where: { privateLeagueId },
-    _sum: { pointsAwarded: true },
-  });
-  return rows
-    .map((r) => ({ userId: r.userId, points: r._sum.pointsAwarded ?? 0 }))
-    .sort((a, b) => b.points - a.points);
+export async function computeLeagueStandings(privateLeagueId: string): Promise<
+  { userId: string; points: number; perfectXiCount: number; createdAt: Date }[]
+> {
+  const [memberships, pointsRows, perfectXiRows] = await Promise.all([
+    prisma.privateLeagueMembership.findMany({
+      where: { leagueId: privateLeagueId, status: "APPROVED" },
+      select: { userId: true, user: { select: { createdAt: true } } },
+    }),
+    prisma.prediction.groupBy({ by: ["userId"], where: { privateLeagueId }, _sum: { pointsAwarded: true } }),
+    prisma.prediction.groupBy({ by: ["userId"], where: { privateLeagueId, isPerfectXi: true }, _count: true }),
+  ]);
+
+  const pointsByUserId = new Map(pointsRows.map((r) => [r.userId, r._sum.pointsAwarded ?? 0]));
+  const perfectXiByUserId = new Map(perfectXiRows.map((r) => [r.userId, r._count]));
+
+  return memberships
+    .map((m) => ({
+      userId: m.userId,
+      points: pointsByUserId.get(m.userId) ?? 0,
+      perfectXiCount: perfectXiByUserId.get(m.userId) ?? 0,
+      createdAt: m.user.createdAt,
+    }))
+    .sort(
+      (a, b) =>
+        b.points - a.points ||
+        b.perfectXiCount - a.perfectXiCount ||
+        a.createdAt.getTime() - b.createdAt.getTime(),
+    );
 }
 
 /**
@@ -55,33 +79,28 @@ export async function computeLeagueStandings(
  * this league* rather than their global favorite team (the two can differ).
  */
 export async function getLeagueLeaderboardRows(privateLeagueId: string) {
-  const [standings, memberships, perfectXiCounts] = await Promise.all([
+  const [standings, memberships] = await Promise.all([
     computeLeagueStandings(privateLeagueId),
     prisma.privateLeagueMembership.findMany({
       where: { leagueId: privateLeagueId, status: "APPROVED" },
       include: { user: { select: { displayName: true, username: true } }, team: { select: { externalId: true } } },
     }),
-    prisma.prediction.groupBy({
-      by: ["userId"],
-      where: { privateLeagueId, isPerfectXi: true },
-      _count: true,
-    }),
   ]);
 
-  const pointsByUserId = new Map(standings.map((s) => [s.userId, s.points]));
-  const perfectXiByUserId = new Map(perfectXiCounts.map((p) => [p.userId, p._count]));
+  const membershipByUserId = new Map(memberships.map((m) => [m.userId, m]));
 
-  // Every approved member appears, even with zero points (no prediction yet) — matches the
-  // public leaderboards, which likewise show every user rather than only ones who've scored.
-  return memberships
-    .map((m) => ({
-      userId: m.userId,
-      displayName: m.user.displayName,
-      username: m.user.username,
-      teamExternalId: m.team?.externalId ?? 0,
-      totalPoints: pointsByUserId.get(m.userId) ?? 0,
-      perfectXiCount: perfectXiByUserId.get(m.userId) ?? 0,
-    }))
-    .sort((a, b) => b.totalPoints - a.totalPoints || b.perfectXiCount - a.perfectXiCount)
-    .map((row, i) => ({ ...row, rank: i + 1 }));
+  // Rank order already comes from computeLeagueStandings' own tiebreak — just attach display
+  // fields and a 1-based rank in that same order, rather than re-deriving/re-sorting separately.
+  return standings.map((s, i) => {
+    const membership = membershipByUserId.get(s.userId)!;
+    return {
+      userId: s.userId,
+      displayName: membership.user.displayName,
+      username: membership.user.username,
+      teamExternalId: membership.team?.externalId ?? 0,
+      totalPoints: s.points,
+      perfectXiCount: s.perfectXiCount,
+      rank: i + 1,
+    };
+  });
 }
