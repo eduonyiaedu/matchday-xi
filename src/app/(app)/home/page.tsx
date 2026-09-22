@@ -263,6 +263,9 @@ export default async function HomePage() {
         </div>
       )}
 
+      <Button asChild variant="outline" className="w-full">
+        <Link href="/profile">Profile</Link>
+      </Button>
       <LogoutButton className="w-full" />
     </div>
   );

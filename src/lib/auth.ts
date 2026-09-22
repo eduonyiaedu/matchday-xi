@@ -49,7 +49,15 @@ export const getOrCreateCurrentUser = cache(async () => {
   if (!authUser) return null;
 
   const existingUser = await prisma.user.findUnique({ where: { id: authUser.id } });
-  if (existingUser) return existingUser;
+  if (existingUser) {
+    // Logging back in before deletionScheduledAt passes cancels the pending deletion — the
+    // account was never actually touched yet (see PURGE_EXPIRED_ACCOUNTS), so this is a cheap
+    // no-op check for the overwhelming majority of users where the field is simply null.
+    if (existingUser.deletionScheduledAt && existingUser.deletionScheduledAt > new Date()) {
+      return prisma.user.update({ where: { id: existingUser.id }, data: { deletionScheduledAt: null } });
+    }
+    return existingUser;
+  }
 
   // Signup consent timestamps + username (see AuthForm) ride along as Supabase user_metadata —
   // set directly in options.data for password/magic-link signup, or via updateUser() in the

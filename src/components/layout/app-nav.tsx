@@ -84,9 +84,12 @@ export function AppNav({
             <span className="hidden text-muted-foreground sm:inline">
               {displayName} <span className="text-xs">@{username}</span>
             </span>
-            <div className="flex size-8 items-center justify-center rounded-full bg-club font-heading text-[11px] font-bold text-pitch">
+            <Link
+              href="/profile"
+              className="flex size-8 items-center justify-center rounded-full bg-club font-heading text-[11px] font-bold text-pitch"
+            >
               {teamInitials}
-            </div>
+            </Link>
             <LogoutButton key={pathname} variant="ghost" size="sm" />
           </div>
         </div>

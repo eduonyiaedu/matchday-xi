@@ -41,3 +41,7 @@ export const respondToMembershipSchema = z.object({
   membershipId: z.string().uuid(),
   approve: z.boolean(),
 });
+
+export const deleteAccountSchema = z.object({
+  feedback: z.string().max(2000).optional(),
+});
