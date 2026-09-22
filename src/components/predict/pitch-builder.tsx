@@ -16,7 +16,6 @@ import {
   BottomSheetTitle,
 } from "@/components/ui/bottom-sheet";
 import { Jersey } from "@/components/predict/jersey";
-import { PerfectXiTakeover } from "@/components/predict/perfect-xi-takeover";
 import { ShareOverlay } from "@/components/predict/share-overlay";
 import { cn } from "@/lib/utils";
 import { FORMATIONS, FORMATION_LAYOUTS, type Formation } from "@/lib/formations";
@@ -76,12 +75,8 @@ export function PitchBuilder({
   initialFormation = "4-4-2",
   teamColors,
   pointsAwarded,
-  isPerfectXi,
   scored,
   officialLineup,
-  matchLabel,
-  matchdayLabel,
-  perfectXiCount,
   predictionId,
 }: {
   fixtureId: string;
@@ -93,19 +88,13 @@ export function PitchBuilder({
   initialFormation?: Formation;
   teamColors: { primary: string; secondary: string };
   pointsAwarded: number | null;
-  isPerfectXi: boolean | null;
   scored: boolean;
   /** Only passed once scored — the confirmed XI, used for the "who started instead" reveal. */
   officialLineup?: OfficialStarter[];
-  /** The following four are only needed when isPerfectXi (feed the takeover celebration). */
-  matchLabel?: string;
-  matchdayLabel?: string;
-  perfectXiCount?: number;
   predictionId?: string;
 }) {
   const router = useRouter();
   const [formation, setFormation] = useState<Formation>(initialFormation);
-  const [takeoverOpen, setTakeoverOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [slots, setSlots] = useState<Record<number, string | null>>(() => {
     const initial: Record<number, string | null> = {};
@@ -339,11 +328,6 @@ export function PitchBuilder({
                 You didn&apos;t submit a prediction — here&apos;s who started.
               </p>
             )}
-            {isPerfectXi && (
-              <Button variant="outline" size="sm" onClick={() => setTakeoverOpen(true)}>
-                See the Perfect XI moment
-              </Button>
-            )}
             {predictionId && (
               <Button variant="outline" size="sm" onClick={() => setShareOpen(true)}>
                 Share your lineup
@@ -543,37 +527,7 @@ export function PitchBuilder({
         </DialogContent>
       </Dialog>
 
-      {takeoverOpen && isPerfectXi && matchLabel && matchdayLabel && predictionId && pointsAwarded !== null && (
-        <PerfectXiTakeover
-          matchLabel={matchLabel}
-          matchdayLabel={matchdayLabel}
-          formation={formation}
-          rows={existingSlots
-            .slice()
-            .sort((a, b) => a.slotIndex - b.slotIndex)
-            .map((s) => {
-              const p = playerById.get(s.squadPlayerId);
-              return {
-                pos: s.slotIndex === 0 ? "GK" : POS_ABBREV[p?.position ?? "MIDFIELDER"],
-                number: p?.shirtNumber ?? null,
-                name: p?.name ?? "",
-              };
-            })}
-          pointsAwarded={pointsAwarded}
-          perfectXiCount={perfectXiCount ?? 1}
-          predictionId={predictionId}
-          onClose={() => setTakeoverOpen(false)}
-        />
-      )}
-
       {shareOpen && predictionId && <ShareOverlay predictionId={predictionId} onClose={() => setShareOpen(false)} />}
     </div>
   );
 }
-
-const POS_ABBREV: Record<SquadPlayer["position"], string> = {
-  GOALKEEPER: "GK",
-  DEFENDER: "DEF",
-  MIDFIELDER: "MID",
-  FORWARD: "FWD",
-};

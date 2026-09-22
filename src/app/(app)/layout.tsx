@@ -5,8 +5,10 @@ import { recordDailyLoginIfNeeded } from "@/lib/streaks";
 import { recordSessionActivity } from "@/lib/session-tracking";
 import { prisma } from "@/lib/prisma";
 import { getTeamColors } from "@/lib/team-colors";
+import { buildPerfectXiTakeoverPayload } from "@/lib/perfect-xi-payload";
 import { AppNav } from "@/components/layout/app-nav";
 import { Footer } from "@/components/layout/footer";
+import { PerfectXiAutoTakeover } from "@/components/predict/perfect-xi-auto-takeover";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getOrCreateCurrentUser();
@@ -37,11 +39,24 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const club = getTeamColors(favoriteTeam.externalId);
   const teamInitials = (favoriteTeam.shortName ?? favoriteTeam.name).slice(0, 3).toUpperCase();
 
+  // Whenever a user logs in or lands on any page, show their earliest still-unseen Perfect XI
+  // celebration before anything else — not a button to hunt for on the specific fixture's page
+  // (see perfect-xi-takeover.tsx's own comment history: it existed and animated correctly, it
+  // just never surfaced automatically). One at a time, oldest first; the next unseen one (if any)
+  // surfaces on a subsequent page load once this one's been marked seen.
+  const unseenPerfectXi = await prisma.prediction.findFirst({
+    where: { userId: user.id, isPerfectXi: true, perfectXiCelebrationShownAt: null },
+    orderBy: { scoredAt: "asc" },
+    select: { id: true },
+  });
+  const takeoverPayload = unseenPerfectXi ? await buildPerfectXiTakeoverPayload(unseenPerfectXi.id) : null;
+
   return (
     <div
       className="flex min-h-svh flex-col pb-24 md:pb-0"
       style={{ "--club": club.primary } as React.CSSProperties}
     >
+      {takeoverPayload && <PerfectXiAutoTakeover key={takeoverPayload.predictionId} payload={takeoverPayload} />}
       <AppNav
         displayName={user.displayName}
         username={user.username}

@@ -70,10 +70,6 @@ export default async function PredictPage({
 
   const isHome = fixture.homeTeamId === user.favoriteTeamId;
   const myTeam = isHome ? fixture.homeTeam : fixture.awayTeam;
-  const matchLabel =
-    fixture.homeScore !== null && fixture.awayScore !== null
-      ? `${fixture.homeTeam.shortName ?? fixture.homeTeam.name} ${fixture.homeScore}–${fixture.awayScore} ${fixture.awayTeam.shortName ?? fixture.awayTeam.name}`
-      : undefined;
 
   return (
     <div className="flex flex-col gap-4">
@@ -105,12 +101,8 @@ export default async function PredictPage({
           initialFormation={(existing?.formation as Formation | undefined) ?? "4-4-2"}
           teamColors={getTeamColors(myTeam.externalId)}
           pointsAwarded={existing?.pointsAwarded ?? null}
-          isPerfectXi={existing?.isPerfectXi ?? null}
           scored={scored}
           officialLineup={officialLineup}
-          matchLabel={matchLabel}
-          matchdayLabel={`${fixture.competition.name} · Final`}
-          perfectXiCount={user.perfectXiCount}
           predictionId={existing?.id}
         />
       )}

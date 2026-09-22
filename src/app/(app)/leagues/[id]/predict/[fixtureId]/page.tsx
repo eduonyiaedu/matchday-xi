@@ -47,7 +47,7 @@ export default async function LeaguePredictPage({
     windowNotYetOpen = !isPredictionWindowOpen(fixture);
   }
 
-  const [squadRaw, formMap, existing, leaguePerfectXiCount] = await Promise.all([
+  const [squadRaw, formMap, existing] = await Promise.all([
     prisma.squadPlayer.findMany({
       where: { teamId, isActive: true },
       orderBy: { name: "asc" },
@@ -58,7 +58,6 @@ export default async function LeaguePredictPage({
       where: { userId_fixtureId_scopeKey: { userId: user.id, fixtureId, scopeKey: scopeKeyFor(leagueId) } },
       include: { slots: true },
     }),
-    prisma.prediction.count({ where: { userId: user.id, privateLeagueId: leagueId, isPerfectXi: true } }),
   ]);
   const squad = squadRaw.map((p) => ({ ...p, form: formFor(formMap, p.id, 5) }));
 
@@ -78,10 +77,6 @@ export default async function LeaguePredictPage({
     : undefined;
 
   const team = fixture.homeTeamId === teamId ? fixture.homeTeam : fixture.awayTeam;
-  const matchLabel =
-    fixture.homeScore !== null && fixture.awayScore !== null
-      ? `${fixture.homeTeam.shortName ?? fixture.homeTeam.name} ${fixture.homeScore}–${fixture.awayScore} ${fixture.awayTeam.shortName ?? fixture.awayTeam.name}`
-      : undefined;
 
   return (
     <div className="flex flex-col gap-4">
@@ -115,12 +110,8 @@ export default async function LeaguePredictPage({
           initialFormation={(existing?.formation as Formation | undefined) ?? "4-4-2"}
           teamColors={getTeamColors(team.externalId)}
           pointsAwarded={existing?.pointsAwarded ?? null}
-          isPerfectXi={existing?.isPerfectXi ?? null}
           scored={scored}
           officialLineup={officialLineup}
-          matchLabel={matchLabel}
-          matchdayLabel={`${league.name} · Final`}
-          perfectXiCount={leaguePerfectXiCount}
           predictionId={existing?.id}
         />
       )}
