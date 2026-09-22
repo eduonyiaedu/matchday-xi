@@ -107,21 +107,30 @@ export async function computeMonthlyEligibility(monthKeyStr: string) {
 
 /** Random draw among eligible, non-duplicate-flagged users (rulebook §9-§10). Idempotent per month. */
 export async function performMonthlyDraw(monthKeyStr: string) {
-  const existing = await prisma.monthlyPrizeDraw.findUnique({ where: { month: monthKeyStr } });
-  if (existing?.drawnAt) return existing;
+  return prisma.$transaction(async (tx) => {
+    // Guards against two overlapping invocations (a retried daily-rollup call, or a request
+    // that outlives Vercel's timeout and gets re-fired) both passing the "not drawn yet" check
+    // before either commits — without the lock, the second call's upsert would silently overwrite
+    // the first call's already-picked (and possibly already-notified) winner with a new random
+    // pick, since eligible.length > 0 makes crypto.randomInt non-deterministic across calls.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"monthly-draw:" + monthKeyStr}))`;
 
-  const eligible = await prisma.monthlyPrizeEligibility.findMany({
-    where: { month: monthKeyStr, isEligible: true, user: { isFlaggedDuplicate: false } },
-    select: { userId: true },
-  });
+    const existing = await tx.monthlyPrizeDraw.findUnique({ where: { month: monthKeyStr } });
+    if (existing?.drawnAt) return existing;
 
-  const winnerUserId =
-    eligible.length > 0 ? eligible[crypto.randomInt(eligible.length)].userId : null;
+    const eligible = await tx.monthlyPrizeEligibility.findMany({
+      where: { month: monthKeyStr, isEligible: true, user: { isFlaggedDuplicate: false } },
+      select: { userId: true },
+    });
 
-  return prisma.monthlyPrizeDraw.upsert({
-    where: { month: monthKeyStr },
-    update: { winnerUserId, eligibleCount: eligible.length, drawnAt: new Date() },
-    create: { month: monthKeyStr, winnerUserId, eligibleCount: eligible.length, drawnAt: new Date() },
+    const winnerUserId =
+      eligible.length > 0 ? eligible[crypto.randomInt(eligible.length)].userId : null;
+
+    return tx.monthlyPrizeDraw.upsert({
+      where: { month: monthKeyStr },
+      update: { winnerUserId, eligibleCount: eligible.length, drawnAt: new Date() },
+      create: { month: monthKeyStr, winnerUserId, eligibleCount: eligible.length, drawnAt: new Date() },
+    });
   });
 }
 

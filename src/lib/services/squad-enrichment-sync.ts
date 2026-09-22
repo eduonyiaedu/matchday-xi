@@ -34,15 +34,31 @@ async function enrichSeniorSquad(teamId: string, players: ApiFootballSquadPlayer
   for (const entry of players) {
     const matchedId = matchPlayerName(entry.name, seniorRows);
     if (!matchedId) continue;
-    await prisma.squadPlayer.update({
-      where: { id: matchedId },
-      data: {
-        shirtNumber: entry.number ?? undefined,
-        apiFootballId: entry.id,
-        photoUrl: entry.photo ?? undefined,
-      },
-    });
-    matched++;
+    try {
+      await prisma.squadPlayer.update({
+        where: { id: matchedId },
+        data: {
+          shirtNumber: entry.number ?? undefined,
+          apiFootballId: entry.id,
+          photoUrl: entry.photo ?? undefined,
+        },
+      });
+      matched++;
+    } catch (error) {
+      // A young player can appear in BOTH API-Football's senior and U21 squad listings under the
+      // same apiFootballId, while our own two name-matching passes (this one, and
+      // enrichU21Squad's) can independently create/track them as two separate SquadPlayer rows —
+      // one genuinely senior, one still tagged U21 from before their call-up. Stamping the same
+      // apiFootballId onto this row then collides with the unique constraint on the other row.
+      // Skip rather than crash: losing this one player's shirt-number refresh for a run is far
+      // better than this row's failure aborting the whole team (and, since a thrown error here
+      // stops apiFootballSquadSyncedAt from ever being set, permanently blocking every other team
+      // queued behind it — confirmed live, this exact gap left the sync stuck on one team for 11
+      // days). Same "catch P2002, treat as already-handled" pattern already used below in
+      // enrichU21Squad's create() call, now applied to both update() calls too.
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") continue;
+      throw error;
+    }
   }
   return matched;
 }
@@ -78,15 +94,24 @@ async function enrichU21Squad(teamId: string, players: ApiFootballSquadPlayer[])
     if (existingByApiFootballId?.squadTier === "SENIOR") continue; // already a senior player, skip
     const existingU21Id = existingByApiFootballId?.id ?? matchPlayerName(entry.name, u21Rows);
     if (existingU21Id) {
-      await prisma.squadPlayer.update({
-        where: { id: existingU21Id },
-        data: {
-          shirtNumber: entry.number ?? undefined,
-          apiFootballId: entry.id,
-          photoUrl: entry.photo ?? undefined,
-        },
-      });
-      matched++;
+      try {
+        await prisma.squadPlayer.update({
+          where: { id: existingU21Id },
+          data: {
+            shirtNumber: entry.number ?? undefined,
+            apiFootballId: entry.id,
+            photoUrl: entry.photo ?? undefined,
+          },
+        });
+        matched++;
+      } catch (error) {
+        // Name-matched (not id-matched) branch — the findUnique above confirmed no row held
+        // entry.id at read time, but this job also runs from an admin button that can overlap
+        // the cron, so a concurrent run can still have claimed it in between. Same "skip, don't
+        // abort the whole team" reasoning as enrichSeniorSquad's update, above.
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") continue;
+        throw error;
+      }
       continue;
     }
 
@@ -128,6 +153,7 @@ export async function syncShirtNumbersAndU21Squads() {
   let u21Matched = 0;
   const skipped: string[] = [];
   const processed: string[] = [];
+  const failed: { team: string; error: string }[] = [];
 
   for (const team of teams) {
     const ids = API_FOOTBALL_CLUB_TEAM_IDS[team.externalId];
@@ -136,18 +162,39 @@ export async function syncShirtNumbersAndU21Squads() {
       continue;
     }
 
-    const seniorPlayers = await apiFootballClient.getSquad(ids.senior);
-    await sleep(REQUEST_SPACING_MS);
-    const u21Players = await apiFootballClient.getSquad(ids.u21);
-    await sleep(REQUEST_SPACING_MS);
+    // Isolate each team — an unanticipated failure here (an API outage, an account suspension, a
+    // name-matching edge case neither update() catch above anticipated) used to throw straight out
+    // of this loop, which not only aborted the run but also meant apiFootballSquadSyncedAt was
+    // never set for the failing team. Since teams are processed oldest-synced-first, that team
+    // then stayed permanently first in line, silently blocking every other team queued behind it
+    // too — confirmed live, this stuck the whole pipeline on one team for 11 days. Catching here
+    // means one team's failure no longer stops the rest of the batch from being refreshed.
+    try {
+      const seniorPlayers = await apiFootballClient.getSquad(ids.senior);
+      await sleep(REQUEST_SPACING_MS);
+      const u21Players = await apiFootballClient.getSquad(ids.u21);
+      await sleep(REQUEST_SPACING_MS);
 
-    seniorMatched += await enrichSeniorSquad(team.id, seniorPlayers);
-    const u21Result = await enrichU21Squad(team.id, u21Players);
-    u21Created += u21Result.created;
-    u21Matched += u21Result.matched;
+      seniorMatched += await enrichSeniorSquad(team.id, seniorPlayers);
+      const u21Result = await enrichU21Squad(team.id, u21Players);
+      u21Created += u21Result.created;
+      u21Matched += u21Result.matched;
 
-    await prisma.team.update({ where: { id: team.id }, data: { apiFootballSquadSyncedAt: new Date() } });
-    processed.push(team.name);
+      await prisma.team.update({ where: { id: team.id }, data: { apiFootballSquadSyncedAt: new Date() } });
+      processed.push(team.name);
+    } catch (error) {
+      failed.push({ team: team.name, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  // Still surface a failure at the JobRun level if anything went wrong — per-team isolation must
+  // not silently swallow a systemic problem (e.g. the whole API-Football account being suspended)
+  // just because it didn't crash the process.
+  if (failed.length > 0) {
+    throw new Error(
+      `${failed.length} club(s) failed: ${failed.map((f) => `${f.team} (${f.error})`).join("; ")}. ` +
+        `Succeeded: ${processed.join(", ") || "none"}.`,
+    );
   }
 
   return { clubsProcessed: processed, clubsSkipped: skipped, seniorMatched, u21Created, u21Matched };

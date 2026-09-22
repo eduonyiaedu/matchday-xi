@@ -30,11 +30,29 @@ async function resolveSquadPlayerId(
   return matchedId;
 }
 
-/** Sends the founder exactly one alert per fixture, the first time automated fetching fails. */
+/**
+ * Sends the founder exactly one alert per fixture, the first time automated fetching fails.
+ * The dedup check-and-claim is lock-guarded (this cron runs every 5 min and a slow tick can still
+ * be in flight when the next one fires, which would otherwise let both read `lineupAlertSentAt`
+ * as null and both send); the actual email send happens after that transaction commits, since a
+ * network call has no business holding a DB lock open. If the send genuinely fails (not just
+ * "not configured" — see notify.ts), the claim is released so the next tick retries instead of
+ * the founder silently and permanently losing their only signal that a fixture needs manual entry.
+ */
 async function alertOnce(fixture: { id: string; lineupAlertSentAt: Date | null; kickoffAt: Date }, matchLabel: string, reason: string) {
-  if (fixture.lineupAlertSentAt) return;
-  await sendLineupAlert({ fixtureId: fixture.id, matchLabel, kickoffAt: fixture.kickoffAt, reason });
-  await prisma.fixture.update({ where: { id: fixture.id }, data: { lineupAlertSentAt: new Date() } });
+  const claimed = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"lineup-alert:" + fixture.id}))`;
+    const fresh = await tx.fixture.findUniqueOrThrow({ where: { id: fixture.id } });
+    if (fresh.lineupAlertSentAt) return false;
+    await tx.fixture.update({ where: { id: fixture.id }, data: { lineupAlertSentAt: new Date() } });
+    return true;
+  });
+  if (!claimed) return;
+
+  const sent = await sendLineupAlert({ fixtureId: fixture.id, matchLabel, kickoffAt: fixture.kickoffAt, reason });
+  if (!sent) {
+    await prisma.fixture.update({ where: { id: fixture.id }, data: { lineupAlertSentAt: null } });
+  }
 }
 
 export async function checkLineupsAndScore() {

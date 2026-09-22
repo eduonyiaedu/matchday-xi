@@ -14,13 +14,34 @@ export interface MatchCandidate {
   name: string;
 }
 
+// Letters that are historically distinct characters, not "base letter + accent" — NFD
+// decomposition (below) only splits off combining marks, so it never touches these, and without
+// this map they were silently deleted by the punctuation strip instead of transliterated. Real
+// case that surfaced this: Arsenal's Martin Ødegaard normalized to "martin degaard" (the ø just
+// vanished), which no longer matched either an "Odegaard" or "Ødegaard" spelling from either
+// provider.
+const NON_DECOMPOSING_LATIN: Record<string, string> = {
+  ø: "o",
+  đ: "d",
+  ł: "l",
+  æ: "ae",
+  œ: "oe",
+  ß: "ss",
+  ð: "d",
+  þ: "th",
+};
+
 /** Lowercase, strip diacritics/punctuation, collapse whitespace. */
 export function normalizeName(name: string): string {
   return name
     .normalize("NFD")
     .replace(new RegExp("[\\u0300-\\u036f]", "g"), "") // strip combining diacritical marks
     .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/[øđłæœßðþ]/g, (c) => NON_DECOMPOSING_LATIN[c])
+    // Hyphens are kept (not spaced out) so a compound surname like "Alexander-Arnold" stays one
+    // token — splitting it into "alexander" + "arnold" would let a same-surname-fragment match
+    // (e.g. an unrelated player named just "Arnold") false-positive against it.
+    .replace(/[^a-z0-9\s-]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }

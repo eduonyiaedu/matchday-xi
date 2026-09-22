@@ -48,6 +48,10 @@ whichever turned something up last time:
 6. Live-verify user-facing fixes with a disposable test account (`npm run create-test-user`),
    clean up the test data (both the Prisma rows and the Supabase auth user) afterward.
 7. Always ask before committing/pushing, even after a large multi-fix round.
+8. Before wrapping up, check whether anything learned this round is durable and non-obvious — if
+   so, propose folding it into this file too, the same way step 7 asks about committing. Confirmed
+   explicitly by the founder (2026-09-17): offer this every round, since this file travels with the
+   repo across machines/sessions and Claude's own session memory doesn't.
 
 ## A recurring bug class: cron + admin-button dual triggers
 
@@ -58,7 +62,11 @@ depending on what's racing:
 - **A non-atomic check-then-create against a row with a real unique constraint** → convert to a
   real Prisma `upsert`, or catch `P2002` on the `create()` (don't parse `error.meta.target` to
   distinguish constraint types — it's not a reliable column-array; re-query by the actual unique
-  field instead).
+  field instead). **This applies to `update()` calls too, not just `create()`** — a real incident
+  (`squad-enrichment-sync.ts`, confirmed live) crashed on exactly this: an `update()` stamping a
+  unique-constrained field (`apiFootballId`) collided with a different row that already held that
+  value, and because only the `create()` path had a `P2002` catch, the `update()` path took down
+  the whole run. Audit both when checking a service function for this class of bug.
 - **A read-then-write against a value with no unique constraint to catch the collision**
   (denormalized counters, "does this logical row already exist" checks) → wrap the whole
   read-decide-write sequence in one `prisma.$transaction`, with a Postgres advisory lock
@@ -69,6 +77,19 @@ depending on what's racing:
 - When auditing or touching a service function, check whether it's invoked from more than one
   entry point (grep for its name across `src/app/api/cron/**` and `src/app/**/admin/**`) before
   assuming "it's just a cron, it won't overlap with anything."
+- **Per-item isolation in a batch loop (try/catch around each item so one failure doesn't abort
+  the rest) must still surface an aggregate failure at the end if anything failed** — don't let the
+  loop return normally and report success just because it didn't crash. The same real incident
+  above also showed why: the failing item's failure silently never marked itself done, which left
+  it permanently first in an "oldest processed first" queue and blocked every other item queued
+  behind it — for 11 days, undetected, because the job kept reporting `SUCCESS`. Collect per-item
+  errors and `throw` a summary once the loop finishes if any occurred, so `JobRun` correctly shows
+  `FAILURE` and it's actually visible.
+- **A best-effort notification (never throws, so it can't break its caller) should still
+  distinguish "not configured" from "a real send failed"** — treat the former as handled (no
+  retry, since retrying a missing API key does nothing), but let the caller know the latter so it
+  can retry rather than permanently marking something "handled" that was actually just lost. Return
+  a boolean (or similar) rather than swallowing everything into `void`.
 
 ## Free-tier data provider limits (confirmed live, not assumed — re-verify if plans may have changed)
 
@@ -101,3 +122,12 @@ depending on what's racing:
   implementation-handoff spec for a full visual redesign ("Floodlight") that has only been
   partially implemented so far — check `git log` for what's actually shipped before assuming the
   handoff doc describes the current UI.
+- `src/lib/player-matching.ts`'s `normalizeName` strips Unicode NFD combining marks (handles
+  precomposed accents like é/ü/ñ/ç fine), but letters that are historically distinct rather than
+  "base letter + accent" — ø, đ, ł, æ, œ, ß, ð, þ — don't decompose that way and were silently
+  *deleted* rather than transliterated (confirmed real: Martin **Ø**degaard normalized to
+  "degaard"). There's an explicit transliteration map for these now; if a real player's name still
+  fails to match, check whether their name uses a letter outside that map before assuming it's a
+  provider-spelling difference. Hyphens are deliberately kept as part of a name token (not split
+  into a space) so a compound surname like "Alexander-Arnold" doesn't truncate to just "Arnold"
+  and risk matching an unrelated same-fragment player.

@@ -8,6 +8,12 @@ import { prisma } from "@/lib/prisma";
  */
 export async function voidFixtureAndReversePoints(fixtureId: string) {
   await prisma.$transaction(async (tx) => {
+    // This runs from both the 6-hourly cron and the admin "sync now" button (both call
+    // syncAllCompetitionFixtures), so two overlapping calls for the same just-postponed fixture
+    // could otherwise both read status !== "VOIDED" before either commits and both decrement the
+    // same user's totalPoints — the lock (plus re-reading status after acquiring it) makes the
+    // second caller correctly see VOIDED and return without double-reversing.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"void-fixture:" + fixtureId}))`;
     const fixture = await tx.fixture.findUniqueOrThrow({ where: { id: fixtureId } });
     if (fixture.status === "VOIDED") return;
 

@@ -3,9 +3,19 @@ import { matchPlayerName, normalizeName } from "@/lib/player-matching";
 
 describe("normalizeName", () => {
   it("lowercases, strips accents and punctuation, collapses whitespace", () => {
-    expect(normalizeName("Martin Ødegaard")).toBe("martin degaard");
     expect(normalizeName("N'Golo Kanté")).toBe("n golo kante");
     expect(normalizeName("  Bruno   Fernandes ")).toBe("bruno fernandes");
+  });
+
+  it("transliterates non-decomposing Latin letters instead of deleting them", () => {
+    // These aren't "base letter + accent" under Unicode NFD, so the combining-mark strip alone
+    // doesn't touch them — real bug: Ødegaard normalized to "degaard" (the ø silently vanished).
+    expect(normalizeName("Martin Ødegaard")).toBe("martin odegaard");
+    expect(normalizeName("Æsop Œster")).toBe("aesop oester");
+  });
+
+  it("keeps a hyphenated surname as one token instead of splitting it", () => {
+    expect(normalizeName("Trent Alexander-Arnold")).toBe("trent alexander-arnold");
   });
 });
 
@@ -44,5 +54,16 @@ describe("matchPlayerName", () => {
 
   it("returns null for an empty name", () => {
     expect(matchPlayerName("", candidates)).toBeNull();
+  });
+
+  it("doesn't false-match a hyphenated surname against an unrelated single-word surname", () => {
+    // Before hyphens were kept as one token, "Trent Alexander-Arnold" normalized surname was
+    // just "arnold" — which would have wrongly matched a second, unrelated "Arnold".
+    const withCompoundSurname = [
+      { id: "1", name: "Trent Alexander-Arnold" },
+      { id: "2", name: "Some Arnold" },
+    ];
+    expect(matchPlayerName("Trent Alexander-Arnold", withCompoundSurname)).toBe("1");
+    expect(matchPlayerName("T. Alexander-Arnold", withCompoundSurname)).toBe("1");
   });
 });
