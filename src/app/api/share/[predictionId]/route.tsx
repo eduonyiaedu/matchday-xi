@@ -286,14 +286,126 @@ interface DotStyle {
   nameColor: string;
 }
 
+// The story card's pitch box: 960px wide (1080 minus padding); its height flexes with the header
+// above it but is never less than ~1260px, so that's the conservative figure for working out
+// where players sit (a taller pitch only moves them further from the top-corner stamps).
+const STORY_PITCH = { width: 960, minHeight: 1260 };
+const STAMP_MARGIN = 40;
+const STAMP_TILT_DEG = 9;
+const STAMP_ASPECT = 0.44; // height / width
+
+interface StampPlacement {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  rotate: number;
+}
+
+/**
+ * Where the Perfect XI stamp goes: a single stamp on the right-hand side of the pitch, tilted
+ * anticlockwise, as big as it can be (up to 360px) without its tilted outline touching any
+ * player's dot or name (founder's choice, 2026-09-23: one stamp, right side, left-leaning tilt).
+ * Computed from this card's own formation and actual name lengths rather than one fixed size,
+ * since the free space varies a lot — 4-2-3-1 leaves a wide top corner, while 4-3-3/3-4-3 wingers
+ * and 4-4-2's strikers stand much closer to it.
+ */
+function perfectXiStampPlacement(
+  layout: { slotIndex: number; top: string; left: string }[],
+  nameFor: (slotIndex: number) => string,
+): StampPlacement | null {
+  const { width: W, minHeight: H } = STORY_PITCH;
+  // Each player's footprint: the 52px dot (centred ~20px above the position point) plus the name
+  // below it. Inter bold at 19px runs ~13px per uppercase character.
+  const players = layout.map((pos) => {
+    const cx = (parseFloat(pos.left) / 100) * W;
+    const cy = (parseFloat(pos.top) / 100) * H;
+    const half = Math.max(30, (nameFor(pos.slotIndex).length * 13) / 2) + 30;
+    return { x0: cx - half, x1: cx + half, y0: cy - 72, y1: cy + 60 };
+  });
+
+  // Biggest size first; for each size, the highest spot in the top 45% of the pitch (never past
+  // halfway) where it fits. Lets the stamp drop just below a high front line — e.g. 4-4-2's
+  // strikers — rather than shrinking to squeeze in beside them.
+  const rad = (STAMP_TILT_DEG * Math.PI) / 180;
+  const maxBottom = H * 0.45;
+  for (let w = 360; w >= 150; w -= 6) {
+    const h = Math.round(w * STAMP_ASPECT);
+    const bw = w * Math.cos(rad) + h * Math.sin(rad);
+    const bh = w * Math.sin(rad) + h * Math.cos(rad);
+    const x0 = W - STAMP_MARGIN - bw;
+    for (let y0 = STAMP_MARGIN; y0 + bh <= maxBottom; y0 += 8) {
+      const box = { x0, x1: x0 + bw, y0, y1: y0 + bh };
+      const clear = players.every((p) => p.x1 < box.x0 || p.x0 > box.x1 || p.y1 < box.y0 || p.y0 > box.y1);
+      if (clear) {
+        return { left: box.x0 + (bw - w) / 2, top: box.y0 + (bh - h) / 2, width: w, height: h, rotate: -STAMP_TILT_DEG };
+      }
+    }
+  }
+  return null;
+}
+
+/** Matches the in-app Perfect XI takeover's stamp (perfect-xi-takeover.tsx): gold frame, dark fill. */
+function perfectXiStamp(p: StampPlacement, dateLabel: string, key: string) {
+  return (
+    <div
+      key={key}
+      style={{
+        position: "absolute",
+        left: p.left,
+        top: p.top,
+        width: p.width,
+        height: p.height,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        transform: `rotate(${p.rotate}deg)`,
+        border: `${Math.max(4, Math.round(p.width * 0.022))}px solid ${GOLD}`,
+        borderRadius: Math.round(p.width * 0.045),
+        backgroundColor: "rgba(11,31,23,0.9)",
+        boxShadow: "0 0 40px rgba(240,180,41,0.35)",
+      }}
+    >
+      <span
+        style={{
+          display: "flex",
+          fontSize: Math.round(p.width * 0.135),
+          fontWeight: 700,
+          lineHeight: 1,
+          letterSpacing: 1,
+          color: GOLD,
+        }}
+      >
+        PERFECT XI
+      </span>
+      <span
+        style={{
+          display: "flex",
+          marginTop: Math.round(p.width * 0.035),
+          fontSize: Math.max(12, Math.round(p.width * 0.045)),
+          letterSpacing: 3,
+          color: CHALK,
+        }}
+      >
+        {`${dateLabel} · 11/11`}
+      </span>
+    </div>
+  );
+}
+
 /** The XI on a full pitch — the story card's diagram. */
 function pitchDiagram({
   layout,
   dot,
+  perfectXiDate,
 }: {
   layout: { slotIndex: number; top: string; left: string }[];
   dot: (slotIndex: number) => DotStyle;
+  /** Set only on a Perfect XI result card — adds the stamp. */
+  perfectXiDate?: string;
 }) {
+  const stamp = perfectXiDate ? perfectXiStampPlacement(layout, (slotIndex) => String(dot(slotIndex).name)) : null;
   return (
     <div
       style={{
@@ -308,6 +420,7 @@ function pitchDiagram({
       }}
     >
       {pitchMarkings()}
+      {stamp && perfectXiStamp(stamp, perfectXiDate ?? "", "stamp")}
       {layout.map((pos) => {
         const d = dot(pos.slotIndex);
         return (
@@ -433,7 +546,13 @@ function resultCard({
       ? `${prediction.fixture.homeTeam.shortName ?? prediction.fixture.homeTeam.name} ${prediction.fixture.homeScore}–${prediction.fixture.awayScore} ${prediction.fixture.awayTeam.shortName ?? prediction.fixture.awayTeam.name}`
       : `${prediction.fixture.homeTeam.shortName ?? prediction.fixture.homeTeam.name} vs ${prediction.fixture.awayTeam.shortName ?? prediction.fixture.awayTeam.name}`;
   const initials = (prediction.team.shortName ?? prediction.team.name).slice(0, 3).toUpperCase();
-  const headline = prediction.isPerfectXi ? "PERFECT XI" : `+${prediction.pointsAwarded} PTS`;
+  // On a story card, a Perfect XI is shown by the stamp on the pitch, so the headline carries
+  // the points like any other result; the square card has no pitch, so it keeps the wording.
+  const stamped = prediction.isPerfectXi === true && format === "story";
+  const headline = prediction.isPerfectXi && !stamped ? "PERFECT XI" : `+${prediction.pointsAwarded} PTS`;
+  // Built by hand: en-GB's short month is "Sept" for September on some ICU versions.
+  const kickoff = prediction.fixture.kickoffAt;
+  const stampDate = `${kickoff.getUTCDate()} ${"JAN FEB MAR APR MAY JUN JUL AUG SEP OCT NOV DEC".split(" ")[kickoff.getUTCMonth()]} ${kickoff.getUTCFullYear()}`;
 
   return baseFrame(format, [
     <div key="header" style={{ display: "flex" }}>
@@ -472,9 +591,8 @@ function resultCard({
     </div>,
 
     <div key="diagram" style={{ display: "flex", width: "100%", flex: format === "story" ? 1 : 0 }}>
-      {(format === "story" ? pitchDiagram : lineupList)({
-        layout,
-        dot: (slotIndex) => {
+      {(() => {
+        const dot = (slotIndex: number): DotStyle => {
           const slot = slotByIndex.get(slotIndex);
           const correct = slot?.isCorrect === true;
           return {
@@ -484,8 +602,11 @@ function resultCard({
             numberColor: correct ? "#0B1F17" : MUTED,
             nameColor: correct ? CHALK : MUTED,
           };
-        },
-      })}
+        };
+        return format === "story"
+          ? pitchDiagram({ layout, dot, perfectXiDate: stamped ? stampDate : undefined })
+          : lineupList({ layout, dot });
+      })()}
     </div>,
 
     <div key="spacer" style={{ display: "flex", flex: format === "story" ? 0 : 1 }} />,

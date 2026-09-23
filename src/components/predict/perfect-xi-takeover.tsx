@@ -78,7 +78,9 @@ export function PerfectXiTakeover({
           <div
             key={i}
             data-anim-confetti
-            className="pointer-events-none absolute top-0 motion-reduce:hidden"
+            // z-20: falls IN FRONT of the team sheet card (which is later in the DOM, so it would
+            // otherwise paint over it); pointer-events-none keeps every button under it tappable.
+            className="pointer-events-none absolute top-0 z-20 motion-reduce:hidden"
             style={{
               left: c.left,
               width: c.w,
