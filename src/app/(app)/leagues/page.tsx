@@ -29,14 +29,12 @@ export default async function LeaguesPage() {
         <div>
           <h1 className="text-2xl font-bold">Private leagues</h1>
           <p className="text-sm text-muted-foreground">
-            Free to create and join — separate scoring from the global/team leaderboards.
+            Free to create and join. Separate scoring from global and team leaderboards. Paid private
+            leagues and prize pools coming soon.
           </p>
         </div>
-        {ownedLeague ? (
-          <Button asChild variant="outline">
-            <Link href={`/leagues/${ownedLeague.id}`}>Manage my league</Link>
-          </Button>
-        ) : (
+        {/* A creator's own league is already listed under "Your leagues" below. */}
+        {!ownedLeague && (
           <Button asChild>
             <Link href="/leagues/create">Create a league</Link>
           </Button>
@@ -76,10 +74,7 @@ export default async function LeaguesPage() {
       <Card className="opacity-70">
         <CardHeader>
           <CardTitle className="text-base">Paid entry leagues</CardTitle>
-          <CardDescription>
-            Entry fees and prize pools for private leagues (15% platform / 15% creator / 70%
-            prize pool) — coming once licensing is confirmed.
-          </CardDescription>
+          <CardDescription>Creators can earn from joining fees.</CardDescription>
         </CardHeader>
         <CardContent>
           <Badge variant="outline">Coming soon</Badge>

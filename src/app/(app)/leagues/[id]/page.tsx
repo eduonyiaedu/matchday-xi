@@ -59,6 +59,9 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
   return (
     <div className="flex flex-col gap-6">
       <div>
+        <Link href="/leagues" className="text-sm text-muted-foreground hover:underline">
+          ← Private leagues
+        </Link>
         <h1 className="text-2xl font-bold">{league.name}</h1>
         <p className="text-sm text-muted-foreground">
           Created by {league.creator.displayName} <span>@{league.creator.username}</span>
@@ -67,7 +70,7 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Rules (locked in, visible to everyone)</CardTitle>
+          <CardTitle className="text-base">Rules</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-1 text-sm">
           <p>

@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getOrCreateCurrentUser } from "@/lib/auth";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ManualSyncButtons } from "@/components/admin/manual-sync-button";
 import { Footer } from "@/components/layout/footer";
 
@@ -20,14 +19,7 @@ export default async function AdminSyncPage() {
           <h1 className="text-2xl font-bold">Sync options</h1>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Manual sync</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ManualSyncButtons />
-          </CardContent>
-        </Card>
+        <ManualSyncButtons />
       </div>
       <Footer />
     </div>

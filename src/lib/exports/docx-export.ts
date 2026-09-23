@@ -11,7 +11,7 @@ import {
   WidthType,
   AlignmentType,
 } from "docx";
-import type { Metric, MetricSection, DateRange } from "@/lib/admin-metrics";
+import { formatMetricValue, type Metric, type MetricSection, type DateRange } from "@/lib/admin-metrics";
 import { renderBarChartPng } from "@/lib/chart-image";
 
 const GOLD = "F0B429";
@@ -23,11 +23,10 @@ async function metricToDocxBlocks(metric: Metric): Promise<(Paragraph | Table)[]
   ];
 
   if (metric.kind === "number" || metric.kind === "percent" || metric.kind === "duration") {
-    const suffix = metric.kind === "percent" ? "%" : metric.unit ? ` ${metric.unit}` : "";
     blocks.push(
       new Paragraph({
         spacing: { before: 120, after: 120 },
-        children: [new TextRun({ text: `${metric.value}${suffix}`, bold: true, size: 44, color: GOLD })],
+        children: [new TextRun({ text: formatMetricValue(metric), bold: true, size: 44, color: GOLD })],
       }),
     );
   } else if (metric.kind === "timeseries" && metric.series) {

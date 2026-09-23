@@ -1,5 +1,5 @@
 import PptxGenJS from "pptxgenjs";
-import type { Metric, MetricSection, DateRange } from "@/lib/admin-metrics";
+import { formatMetricValue, type Metric, type MetricSection, type DateRange } from "@/lib/admin-metrics";
 
 const GOLD = "F0B429";
 const PITCH = "0B1F17";
@@ -14,8 +14,7 @@ function addMetricSlide(pptx: PptxGenJS, metric: Metric) {
   slide.addText(metric.description, { x: 0.5, y: 0.95, w: 9, h: 0.7, fontSize: 12, italic: true, color: MUTED });
 
   if (metric.kind === "number" || metric.kind === "percent" || metric.kind === "duration") {
-    const suffix = metric.kind === "percent" ? "%" : metric.unit ? ` ${metric.unit}` : "";
-    slide.addText(`${metric.value}${suffix}`, {
+    slide.addText(formatMetricValue(metric), {
       x: 0.5,
       y: 2,
       w: 9,
@@ -42,7 +41,8 @@ function addMetricSlide(pptx: PptxGenJS, metric: Metric) {
           catAxisLabelColor: MUTED,
           valAxisLabelColor: MUTED,
           dataLabelColor: CHALK,
-          showValue: true,
+          // Per-bar numbers only when there's room — a 90-day daily series is unreadable with them.
+          showValue: metric.series.length <= 24,
           plotArea: { fill: { color: PITCH_LIGHT } },
           chartArea: { fill: { color: PITCH } },
         },

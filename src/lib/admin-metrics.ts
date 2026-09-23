@@ -61,6 +61,18 @@ export interface MetricSection {
   metrics: Metric[];
 }
 
+/** A single-value metric as display text, shared by the admin page and all three exports. */
+export function formatMetricValue(metric: Metric): string {
+  if (metric.kind === "percent") return `${metric.value}%`;
+  if (metric.kind === "duration" && typeof metric.value === "number") {
+    // Seconds as "12m 34s" rather than "754 seconds".
+    const m = Math.floor(metric.value / 60);
+    const s = metric.value % 60;
+    return m > 0 ? `${m}m ${s}s` : `${s}s`;
+  }
+  return `${metric.value}${metric.unit ? ` ${metric.unit}` : ""}`;
+}
+
 function pct(numerator: number, denominator: number): number {
   if (denominator === 0) return 0;
   return Math.round((numerator / denominator) * 1000) / 10; // one decimal place
@@ -85,6 +97,27 @@ function weekLabel(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
+/**
+ * Bucketed counts over EVERY day/week in the range, including empty ones. Building series only
+ * from the dates that had data silently dropped zero periods — a week with no signups vanished
+ * from the chart instead of showing as a dip, making growth look smoother than it was.
+ */
+function filledSeries(
+  dates: Date[],
+  range: DateRange,
+  bucket: "day" | "week",
+): { label: string; value: number }[] {
+  const startOf = (d: Date) => (bucket === "week" ? startOfWeekUtc(d) : truncateToDateUtc(d));
+  const step = bucket === "week" ? 7 : 1;
+  const counts = new Map<string, number>();
+  for (let d = startOf(range.from); d <= range.to; d = addDays(d, step)) counts.set(weekLabel(d), 0);
+  for (const date of dates) {
+    const label = weekLabel(startOf(date));
+    if (counts.has(label)) counts.set(label, counts.get(label)! + 1);
+  }
+  return [...counts.entries()].map(([label, value]) => ({ label, value }));
+}
+
 // ---------------------------------------------------------------------------
 // Growth
 // ---------------------------------------------------------------------------
@@ -96,14 +129,7 @@ async function growthSection(range: DateRange): Promise<MetricSection> {
     prisma.user.count({ where: { favoriteTeamId: { not: null } } }),
   ]);
 
-  const weekBuckets = new Map<string, number>();
-  for (const u of usersInRange) {
-    const label = weekLabel(startOfWeekUtc(u.createdAt));
-    weekBuckets.set(label, (weekBuckets.get(label) ?? 0) + 1);
-  }
-  const series = [...weekBuckets.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([label, value]) => ({ label, value }));
+  const series = filledSeries(usersInRange.map((u) => u.createdAt), range, "week");
 
   return {
     key: "growth",
@@ -126,7 +152,7 @@ async function growthSection(range: DateRange): Promise<MetricSection> {
       {
         key: "signups-per-week",
         label: "New signups per week",
-        description: "Weekly signup counts (Sunday-starting weeks, UTC) within the selected range — the growth trend line.",
+        description: "Weekly signup counts (Sunday-starting weeks, UTC) within the selected range — the growth trend line. Weeks with no signups show as zero; the first and last weeks may be partial if the range starts or ends mid-week.",
         kind: "timeseries",
         series,
       },
@@ -150,7 +176,7 @@ async function engagementSection(range: DateRange): Promise<MetricSection> {
   const weekStart = addDays(dayStart, -6);
   const monthStart = addDays(dayStart, -29);
 
-  const [dau, wau, mau, totalUsers, predictors, eligiblePredictors] = await Promise.all([
+  const [dau, wau, mau, totalUsers, predictors, eligiblePredictors, loginDaysInMonth, firstLogin] = await Promise.all([
     prisma.dailyLoginLog.findMany({ where: { loginDate: dayStart }, select: { userId: true }, distinct: ["userId"] }),
     prisma.dailyLoginLog.findMany({ where: { loginDate: { gte: weekStart, lte: dayStart } }, select: { userId: true }, distinct: ["userId"] }),
     prisma.dailyLoginLog.findMany({ where: { loginDate: { gte: monthStart, lte: dayStart } }, select: { userId: true }, distinct: ["userId"] }),
@@ -161,10 +187,21 @@ async function engagementSection(range: DateRange): Promise<MetricSection> {
       distinct: ["userId"],
     }),
     prisma.dailyLoginLog.findMany({ where: { loginDate: { gte: range.from, lte: range.to } }, select: { userId: true }, distinct: ["userId"] }),
+    // One DailyLoginLog row = one user active on one day, so the row count over the 30-day window
+    // is the total of each day's DAU.
+    prisma.dailyLoginLog.count({ where: { loginDate: { gte: monthStart, lte: dayStart } } }),
+    prisma.dailyLoginLog.aggregate({ _min: { loginDate: true } }),
   ]);
 
   const dauCount = dau.length;
   const mauCount = mau.length;
+  // Stickiness is conventionally AVERAGE DAU over the month divided by MAU. It used to divide a
+  // single day's DAU by MAU — noisy day to day, and badly understated whenever the range ends
+  // today (a partial day). Averaged over the days the app has actually existed within the window,
+  // so a young app isn't penalised for days before launch.
+  const windowStart = firstLogin._min.loginDate && firstLogin._min.loginDate > monthStart ? firstLogin._min.loginDate : monthStart;
+  const daysInWindow = Math.max(1, Math.round((dayStart.getTime() - windowStart.getTime()) / (24 * 60 * 60 * 1000)) + 1);
+  const avgDau = Math.round((loginDaysInMonth / daysInWindow) * 10) / 10;
 
   return {
     key: "engagement",
@@ -173,7 +210,7 @@ async function engagementSection(range: DateRange): Promise<MetricSection> {
       {
         key: "dau",
         label: "Daily Active Users (DAU)",
-        description: `Distinct users who logged in on ${dayStart.toDateString()} (the end of the selected range) — a snapshot of one day's activity.`,
+        description: `Distinct users who logged in on ${dayStart.toDateString()} (the end of the selected range) — a snapshot of one day's activity, so far if that day is today.`,
         kind: "number",
         value: dauCount,
       },
@@ -192,11 +229,18 @@ async function engagementSection(range: DateRange): Promise<MetricSection> {
         value: mauCount,
       },
       {
+        key: "avg-dau",
+        label: "Average DAU (last 30 days)",
+        description: "Average number of distinct users active per day over the 30 days ending on the range's end date (or since launch, if that's more recent).",
+        kind: "number",
+        value: avgDau,
+      },
+      {
         key: "stickiness",
         label: "Stickiness (DAU/MAU)",
-        description: "DAU divided by MAU — the classic engagement-depth metric investors look for. Higher means active users come back more often, not just once a month.",
+        description: "Average DAU over the last 30 days divided by MAU — the classic engagement-depth metric investors look for. Higher means active users come back more often, not just once a month.",
         kind: "percent",
-        value: pct(dauCount, mauCount),
+        value: pct(avgDau, mauCount),
       },
       {
         key: "prediction-participation",
@@ -273,14 +317,20 @@ async function retentionSection(range: DateRange): Promise<MetricSection> {
     return logins.some((d) => d >= windowStart && d <= windowEnd);
   }
 
+  // Only users whose D-n window has fully passed can be judged. Counting everyone used to show a
+  // cohort from last week as "D7 retained: 0%" / "D30 retained: 0%" — not a retention failure, just
+  // not old enough yet — which made every recent cohort look catastrophic.
+  const today = truncateToDateUtc(new Date());
+  function retention(users: { id: string; createdAt: Date }[], dayOffset: number, windowDays: number): string {
+    const measurable = users.filter((u) => addDays(truncateToDateUtc(u.createdAt), dayOffset + windowDays) < today);
+    if (measurable.length === 0) return "—";
+    const retained = measurable.filter((u) => retainedAt(u, dayOffset, windowDays)).length;
+    return `${pct(retained, measurable.length)}%${measurable.length < users.length ? ` (${measurable.length} of ${users.length})` : ""}`;
+  }
+
   const rows: (string | number)[][] = [...cohortByWeek.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([week, users]) => {
-      const d1 = users.filter((u) => retainedAt(u, 1, 0)).length;
-      const d7 = users.filter((u) => retainedAt(u, 7, 1)).length;
-      const d30 = users.filter((u) => retainedAt(u, 30, 2)).length;
-      return [week, users.length, `${pct(d1, users.length)}%`, `${pct(d7, users.length)}%`, `${pct(d30, users.length)}%`];
-    });
+    .map(([week, users]) => [week, users.length, retention(users, 1, 0), retention(users, 7, 1), retention(users, 30, 2)]);
 
   return {
     key: "retention",
@@ -290,7 +340,7 @@ async function retentionSection(range: DateRange): Promise<MetricSection> {
         key: "retention-cohorts",
         label: "Weekly signup cohorts — D1 / D7 / D30 retention",
         description:
-          "Users grouped by the Sunday-starting week they signed up in. D1/D7/D30 = % of that cohort with at least one login within a day of that many days after their own signup date (D1: the next day; D7: day 6-8; D30: day 28-32). Uses all available login history, not just the selected range, since retention looks forward from signup.",
+          "Users grouped by the Sunday-starting week they signed up in. D1/D7/D30 = % of that cohort with at least one login within a day of that many days after their own signup date (D1: the next day; D7: day 6-8; D30: day 28-32). Only users old enough to have reached that day are counted — \"—\" means nobody in the cohort has yet, and \"(x of y)\" means only x of the y signups could be measured so far. Uses all available login history, not just the selected range, since retention looks forward from signup.",
         kind: "table",
         columns: ["Cohort week", "Signups", "D1 retained", "D7 retained", "D30 retained"],
         rows,
@@ -306,8 +356,15 @@ async function retentionSection(range: DateRange): Promise<MetricSection> {
 async function streaksSection(): Promise<MetricSection> {
   const users = await prisma.user.findMany({
     where: { favoriteTeamId: { not: null } },
-    select: { currentStreak: true, longestStreak: true },
+    select: { currentStreak: true, longestStreak: true, lastLoginDate: true },
   });
+  // currentStreak is only rewritten when a user logs in, so the stored value of someone who
+  // stopped coming back is frozen at whatever it was — it used to be counted as a live streak
+  // (a user gone for a month still showed as "a 10-day streak"). A streak is only still alive if
+  // their last login was today or yesterday (UTC).
+  const yesterday = addDays(truncateToDateUtc(new Date()), -1);
+  const liveStreak = (u: { currentStreak: number; lastLoginDate: Date | null }) =>
+    u.lastLoginDate && u.lastLoginDate >= yesterday ? u.currentStreak : 0;
 
   const buckets = [
     { label: "0 days", test: (n: number) => n === 0 },
@@ -317,7 +374,7 @@ async function streaksSection(): Promise<MetricSection> {
     { label: "14-29 days", test: (n: number) => n >= 14 && n <= 29 },
     { label: "30+ days", test: (n: number) => n >= 30 },
   ];
-  const series = buckets.map((b) => ({ label: b.label, value: users.filter((u) => b.test(u.currentStreak)).length }));
+  const series = buckets.map((b) => ({ label: b.label, value: users.filter((u) => b.test(liveStreak(u))).length }));
   const longest = users.reduce((max, u) => Math.max(max, u.longestStreak), 0);
 
   return {
@@ -327,7 +384,7 @@ async function streaksSection(): Promise<MetricSection> {
       {
         key: "streak-distribution",
         label: "Current login-streak distribution",
-        description: "Snapshot (not range-scoped) of every activated user's current consecutive-day login streak, bucketed. Shows how many users are in a deep habitual-use groove right now.",
+        description: "Snapshot (not range-scoped) of every activated user's current consecutive-day login streak, bucketed. A streak counts only if the user last logged in today or yesterday (UTC) — anyone who has since stopped is in \"0 days\". Shows how many users are in a deep habitual-use groove right now.",
         kind: "timeseries",
         series,
       },
@@ -433,12 +490,7 @@ async function sessionsSection(range: DateRange): Promise<MetricSection> {
   const avgDurationSec = durationsMs.length > 0 ? Math.round(durationsMs.reduce((a, b) => a + b, 0) / durationsMs.length / 1000) : 0;
   const sessionsPerUser = activeUserCount > 0 ? Math.round((sessions.length / activeUserCount) * 10) / 10 : 0;
 
-  const dayBuckets = new Map<string, number>();
-  for (const s of sessions) {
-    const label = s.startedAt.toISOString().slice(0, 10);
-    dayBuckets.set(label, (dayBuckets.get(label) ?? 0) + 1);
-  }
-  const series = [...dayBuckets.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([label, value]) => ({ label, value }));
+  const series = filledSeries(sessions.map((s) => s.startedAt), range, "day");
 
   return {
     key: "sessions",
@@ -455,7 +507,7 @@ async function sessionsSection(range: DateRange): Promise<MetricSection> {
       {
         key: "sessions-per-day",
         label: "Sessions per day",
-        description: "Daily session-start counts within the selected range.",
+        description: "Daily session-start counts within the selected range, including days with none.",
         kind: "timeseries",
         series,
       },
@@ -478,15 +530,271 @@ async function sessionsSection(range: DateRange): Promise<MetricSection> {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Shared filters for the sections below
+// ---------------------------------------------------------------------------
+
+const DELETED_EMAIL_SUFFIX = "@deleted.matchday-xi.app";
+/** Activated players who still exist — excludes accounts anonymized by the 30-day purge. */
+const LIVE_PLAYERS = { favoriteTeamId: { not: null }, NOT: { email: { endsWith: DELETED_EMAIL_SUFFIX } } };
+const MONTH_NAMES = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split(" ");
+const monthName = (key: string) => `${MONTH_NAMES[Number(key.slice(5, 7)) - 1]} ${key.slice(0, 4)}`;
+
+// ---------------------------------------------------------------------------
+// Matchday engagement — participation and accuracy
+// ---------------------------------------------------------------------------
+
+async function matchdaySection(range: DateRange): Promise<MetricSection> {
+  // Only fixtures whose prediction window has closed (and real ones — test fixtures use negative
+  // externalIds), so a fixture still open for picks doesn't drag participation down.
+  const fixtures = await prisma.fixture.findMany({
+    where: { externalId: { gt: 0 }, status: { not: "VOIDED" }, lockAt: { lte: new Date() }, kickoffAt: { gte: range.from, lte: range.to } },
+    include: { homeTeam: { select: { name: true, shortName: true } }, awayTeam: { select: { name: true, shortName: true } } },
+    orderBy: { kickoffAt: "desc" },
+  });
+  const [fans, predictions] = await Promise.all([
+    prisma.user.findMany({ where: LIVE_PLAYERS, select: { favoriteTeamId: true, createdAt: true } }),
+    prisma.prediction.findMany({
+      where: { privateLeagueId: null, fixtureId: { in: fixtures.map((f) => f.id) } },
+      select: { fixtureId: true, teamId: true, pointsAwarded: true, isPerfectXi: true },
+    }),
+  ]);
+
+  // One row per (fixture, side): that club's fans who had already signed up before lock, and how
+  // many of them predicted.
+  let eligibleTotal = 0;
+  let predictedTotal = 0;
+  const rows: (string | number)[][] = [];
+  for (const f of fixtures) {
+    for (const side of [
+      { teamId: f.homeTeamId, team: f.homeTeam, opponent: f.awayTeam },
+      { teamId: f.awayTeamId, team: f.awayTeam, opponent: f.homeTeam },
+    ]) {
+      const eligible = fans.filter((u) => u.favoriteTeamId === side.teamId && u.createdAt < f.lockAt).length;
+      if (eligible === 0) continue;
+      const predicted = predictions.filter((p) => p.fixtureId === f.id && p.teamId === side.teamId).length;
+      eligibleTotal += eligible;
+      predictedTotal += predicted;
+      rows.push([
+        `${side.team.shortName ?? side.team.name} v ${side.opponent.shortName ?? side.opponent.name} · ${f.kickoffAt.toISOString().slice(0, 10)}`,
+        eligible,
+        predicted,
+        `${pct(predicted, eligible)}%`,
+      ]);
+    }
+  }
+
+  const scored = predictions.filter((p) => p.pointsAwarded !== null);
+  // +10 per correct player, +25 bonus for all 11 — so correct picks = points / 10, minus the bonus.
+  const correctPicks = scored.map((p) => (p.isPerfectXi ? 11 : Math.floor(p.pointsAwarded! / 10)));
+  const avgCorrect = scored.length > 0 ? Math.round((correctPicks.reduce((a, b) => a + b, 0) / scored.length) * 10) / 10 : 0;
+
+  return {
+    key: "matchday",
+    title: "Matchday engagement",
+    metrics: [
+      {
+        key: "matchday-participation",
+        label: "Matchday participation",
+        description:
+          "Of each club's fans (players who'd already signed up before the fixture locked), the % who submitted a prediction for that club's fixture — across all fixtures in the range whose prediction window has closed. The core engagement number: are fans actually playing each matchday?",
+        kind: "percent",
+        value: pct(predictedTotal, eligibleTotal),
+      },
+      {
+        key: "matchday-participation-by-fixture",
+        label: "Participation by fixture",
+        description: "The same, broken down per club per fixture (most recent first, up to 20).",
+        kind: "table",
+        columns: ["Club · fixture", "Fans", "Predicted", "Participation"],
+        rows: rows.slice(0, 20),
+      },
+      {
+        key: "prediction-accuracy",
+        label: "Average correct players",
+        description: "Average number of correctly predicted starters (out of 11) across scored global predictions for fixtures in the range — whether the game feels winnable.",
+        kind: "number",
+        value: avgCorrect,
+        unit: "of 11",
+      },
+      {
+        key: "perfect-xi-rate",
+        label: "Perfect XI rate",
+        description: "% of scored global predictions in the range that got all 11 starters right.",
+        kind: "percent",
+        value: pct(scored.filter((p) => p.isPerfectXi).length, scored.length),
+      },
+    ],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Audience & reach (snapshots)
+// ---------------------------------------------------------------------------
+
+async function audienceSection(): Promise<MetricSection> {
+  const fourteenDaysAgo = addDays(truncateToDateUtc(new Date()), -14);
+  const [players, pushUsers, byClub, teams] = await Promise.all([
+    prisma.user.findMany({ where: LIVE_PLAYERS, select: { id: true, lastLoginDate: true } }),
+    prisma.pushSubscription.findMany({ where: { user: LIVE_PLAYERS }, select: { userId: true }, distinct: ["userId"] }),
+    prisma.user.groupBy({ by: ["favoriteTeamId"], where: LIVE_PLAYERS, _count: { _all: true } }),
+    prisma.team.findMany({ where: { isPremierLeagueClub: true }, select: { id: true, name: true } }),
+  ]);
+  const inactive = players.filter((u) => !u.lastLoginDate || u.lastLoginDate < fourteenDaysAgo).length;
+  const teamName = new Map(teams.map((t) => [t.id, t.name]));
+  const clubRows = byClub
+    .sort((a, b) => b._count._all - a._count._all)
+    .map((c) => [teamName.get(c.favoriteTeamId!) ?? "Other", c._count._all, `${pct(c._count._all, players.length)}%`]);
+
+  return {
+    key: "audience",
+    title: "Audience & reach",
+    metrics: [
+      {
+        key: "push-opt-in",
+        label: "Push notification opt-in rate",
+        description: "% of current players with push notifications switched on for at least one device (snapshot). This is how many people matchday reminders and prize announcements can actually reach.",
+        kind: "percent",
+        value: pct(pushUsers.length, players.length),
+      },
+      {
+        key: "inactive-players",
+        label: "Inactive players (14+ days)",
+        description: `% of current players who haven't logged in for 14 days or more (snapshot) — ${inactive} of ${players.length}. A rising number is an early churn warning.`,
+        kind: "percent",
+        value: pct(inactive, players.length),
+      },
+      {
+        key: "fans-per-club",
+        label: "Fans per club",
+        description: "How many current players support each club (snapshot) — for marketing and club partnership conversations.",
+        kind: "table",
+        columns: ["Club", "Fans", "Share"],
+        rows: clubRows,
+      },
+    ],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Prize-draw eligibility (per completed month, not range-scoped)
+// ---------------------------------------------------------------------------
+
+async function prizesSection(): Promise<MetricSection> {
+  const grouped = await prisma.monthlyPrizeEligibility.groupBy({ by: ["month", "isEligible"], _count: { _all: true } });
+  const byMonth = new Map<string, { checked: number; eligible: number }>();
+  for (const g of grouped) {
+    const m = byMonth.get(g.month) ?? { checked: 0, eligible: 0 };
+    m.checked += g._count._all;
+    if (g.isEligible) m.eligible += g._count._all;
+    byMonth.set(g.month, m);
+  }
+  const months = [...byMonth.entries()].sort(([a], [b]) => b.localeCompare(a)).slice(0, 12);
+  const latest = months[0];
+
+  return {
+    key: "prizes",
+    title: "Prize-draw eligibility",
+    metrics: [
+      {
+        key: "prize-eligibility-latest",
+        label: latest ? `Eligible for the ${monthName(latest[0])} draw` : "Eligible for the latest monthly draw",
+        description: "% of players who qualified for the most recent monthly prize draw — predicted every one of their club's fixtures that month AND logged in every day. Your most committed players. Calculated when each month's draw runs, so none until the first draw.",
+        kind: "percent",
+        value: latest ? pct(latest[1].eligible, latest[1].checked) : 0,
+      },
+      {
+        key: "prize-eligibility-by-month",
+        label: "Eligibility by month",
+        description: "Players checked and qualified for each completed month's draw (most recent first, up to 12 months).",
+        kind: "table",
+        columns: ["Month", "Players", "Eligible", "Share"],
+        rows: months.map(([month, m]) => [monthName(month), m.checked, m.eligible, `${pct(m.eligible, m.checked)}%`]),
+      },
+    ],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Sharing & account deletions
+// ---------------------------------------------------------------------------
+
+async function sharingSection(range: DateRange): Promise<MetricSection> {
+  const [events, predictors] = await Promise.all([
+    prisma.shareEvent.findMany({ where: { createdAt: { gte: range.from, lte: range.to } }, select: { userId: true, method: true } }),
+    prisma.prediction.findMany({ where: { submittedAt: { gte: range.from, lte: range.to } }, select: { userId: true }, distinct: ["userId"] }),
+  ]);
+  const sharers = new Set(events.map((e) => e.userId)).size;
+  const viaShareSheet = events.filter((e) => e.method === "share").length;
+
+  return {
+    key: "sharing",
+    title: "Virality — share cards",
+    metrics: [
+      {
+        key: "cards-shared",
+        label: "Share cards shared in range",
+        description: `Times a player sent their share card via their phone's share sheet (${viaShareSheet}) or saved it to their device (${events.length - viaShareSheet}) within the range. Counts real shares from the Share button only — not link previews. Tracking started 23 Sep 2026.`,
+        kind: "number",
+        value: events.length,
+      },
+      {
+        key: "sharer-rate",
+        label: "% of predictors who shared",
+        description: "Distinct players who shared at least one card, as a % of distinct players who submitted any prediction in the range — how often playing turns into word of mouth.",
+        kind: "percent",
+        value: pct(sharers, predictors.length),
+      },
+    ],
+  };
+}
+
+async function deletionsSection(range: DateRange): Promise<MetricSection> {
+  const [requestsInRange, pending, completed] = await Promise.all([
+    prisma.accountDeletionFeedback.count({ where: { createdAt: { gte: range.from, lte: range.to } } }),
+    prisma.user.count({ where: { deletionScheduledAt: { not: null }, NOT: { email: { endsWith: DELETED_EMAIL_SUFFIX } } } }),
+    prisma.user.count({ where: { email: { endsWith: DELETED_EMAIL_SUFFIX } } }),
+  ]);
+  return {
+    key: "deletions",
+    title: "Account deletions",
+    metrics: [
+      {
+        key: "deletion-requests",
+        label: "Deletion requests in range",
+        description: "Players who asked to delete their account within the range (the reasons they gave are on Admin → Deletion feedback).",
+        kind: "number",
+        value: requestsInRange,
+      },
+      {
+        key: "deletion-status",
+        label: "Deletion status (all-time)",
+        description: "Accounts currently in their 30-day grace period (they can still cancel by logging back in), and accounts permanently deleted.",
+        kind: "table",
+        columns: ["Status", "Accounts"],
+        rows: [
+          ["Pending (in grace period)", pending],
+          ["Permanently deleted", completed],
+        ],
+      },
+    ],
+  };
+}
+
 export async function getAdminMetrics(range: DateRange): Promise<MetricSection[]> {
-  const [growth, engagement, retention, streaks, virality, trust, sessions] = await Promise.all([
+  const sections = await Promise.all([
     growthSection(range),
     engagementSection(range),
+    matchdaySection(range),
     retentionSection(range),
     streaksSection(),
+    audienceSection(),
+    prizesSection(),
     viralitySection(range),
+    sharingSection(range),
     trustSection(),
+    deletionsSection(range),
     sessionsSection(range),
   ]);
-  return [growth, engagement, retention, streaks, virality, trust, sessions];
+  return sections;
 }

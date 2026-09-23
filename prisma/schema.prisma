@@ -116,6 +116,7 @@ model User {
   monthlyEligibilities MonthlyPrizeEligibility[]
   monthlyPrizeDrawsWon MonthlyPrizeDraw[]
   seasonPrizes         SeasonPrize[]
+  shareEvents          ShareEvent[]
   createdLeagues       PrivateLeague[]           @relation("LeagueCreator")
   leagueMemberships    PrivateLeagueMembership[]
   pushSubscriptions    PushSubscription[]
@@ -457,6 +458,22 @@ model MonthlyPrizeDraw {
   createdAt     DateTime  @default(now())
 
   @@index([winnerUserId])
+}
+
+/// One row each time a player actually shares (device share sheet) or saves their share card from
+/// the share overlay — not every card render, since link previews and crawlers also fetch the
+/// image. Feeds the share metrics on /admin/analytics.
+model ShareEvent {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  predictionId String
+  /// "share" = sent via the device share sheet; "download" = saved to the device instead.
+  method       String
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([userId])
 }
 
 /// Season-end prize placings (1st/2nd/3rd on the global leaderboard), recorded only when the

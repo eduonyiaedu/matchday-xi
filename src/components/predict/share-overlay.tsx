@@ -53,8 +53,20 @@ export function ShareOverlay({ predictionId, onClose }: { predictionId: string; 
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
+  // Counts real shares/saves for the admin share metrics. Fire-and-forget (keepalive so it still
+  // goes out if the page is left right after) — never allowed to interfere with sharing itself.
+  function recordShare(method: "share" | "download") {
+    fetch("/api/share-events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ predictionId, method }),
+      keepalive: true,
+    }).catch(() => {});
+  }
+
   function handleSave() {
     if (!imgUrl) return;
+    recordShare("download");
     const a = document.createElement("a");
     a.href = imgUrl;
     a.download = "matchday-xi.png";
@@ -79,6 +91,7 @@ export function ShareOverlay({ predictionId, onClose }: { predictionId: string; 
     }
     try {
       await navigator.share({ files: [file], title: "Matchday XI" });
+      recordShare("share");
     } catch (error) {
       // Cancelling the share sheet is fine (AbortError). Anything else (e.g. the browser refusing
       // the share) used to fail silently with the button doing nothing — save the image instead.

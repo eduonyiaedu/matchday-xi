@@ -1,5 +1,5 @@
 import ExcelJS from "exceljs";
-import type { Metric, MetricSection, DateRange } from "@/lib/admin-metrics";
+import { formatMetricValue, type Metric, type MetricSection, type DateRange } from "@/lib/admin-metrics";
 import { renderBarChartPng } from "@/lib/chart-image";
 
 const GOLD_ARGB = "FFF0B429";
@@ -26,9 +26,8 @@ async function writeMetric(worksheet: ExcelJS.Worksheet, workbook: ExcelJS.Workb
   row += 2;
 
   if (metric.kind === "number" || metric.kind === "percent" || metric.kind === "duration") {
-    const suffix = metric.kind === "percent" ? "%" : metric.unit ? ` ${metric.unit}` : "";
     const valueCell = worksheet.getCell(row, 1);
-    valueCell.value = `${metric.value}${suffix}`;
+    valueCell.value = formatMetricValue(metric);
     valueCell.font = { bold: true, size: 20, color: { argb: GOLD_ARGB } };
     row += 2;
   } else if (metric.kind === "timeseries" && metric.series) {

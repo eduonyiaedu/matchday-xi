@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MetricBarChart } from "@/components/admin/metric-bar-chart";
-import type { Metric } from "@/lib/admin-metrics";
+import { formatMetricValue, type Metric } from "@/lib/admin-metrics";
 
 export function MetricCard({ metric }: { metric: Metric }) {
   return (
@@ -11,10 +11,7 @@ export function MetricCard({ metric }: { metric: Metric }) {
       </CardHeader>
       <CardContent>
         {(metric.kind === "number" || metric.kind === "percent" || metric.kind === "duration") && (
-          <p className="font-heading text-3xl font-semibold text-gold">
-            {metric.value}
-            {metric.kind === "percent" ? "%" : metric.unit ? ` ${metric.unit}` : ""}
-          </p>
+          <p className="font-heading text-3xl font-semibold text-gold">{formatMetricValue(metric)}</p>
         )}
 
         {metric.kind === "timeseries" && metric.series && <MetricBarChart series={metric.series} unit={metric.unit} />}

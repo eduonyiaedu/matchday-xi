@@ -47,7 +47,7 @@ export function LeagueSearch({ initialLeagues }: { initialLeagues: LeagueSummary
               <CardHeader>
                 <CardTitle className="text-base">{l.name}</CardTitle>
                 <CardDescription>
-                  by {l.creatorName} · {l.memberCount} members
+                  by {l.creatorName} · {l.memberCount} {l.memberCount === 1 ? "member" : "members"}
                 </CardDescription>
               </CardHeader>
             </Card>
