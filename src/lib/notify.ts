@@ -30,7 +30,9 @@ export async function sendLineupAlert(params: {
 
   try {
     const resend = new Resend(apiKey);
-    await resend.emails.send({
+    // Resend reports API failures (rejected sender, bad recipient, rate limit…) in the returned
+    // `error`, not by throwing — this used to ignore it and report every such failure as sent.
+    const { error } = await resend.emails.send({
       from: "Matchday XI <onboarding@resend.dev>",
       to,
       subject: `Matchday XI — lineup fetch failed: ${params.matchLabel}`,
@@ -44,9 +46,48 @@ export async function sendLineupAlert(params: {
         `Reason: ${params.reason}`,
       ].join("\n"),
     });
+    if (error) throw new Error(`${error.name}: ${error.message}`);
     return true;
   } catch (error) {
     console.error("[lineup-alert] Failed to send alert email:", error);
+    return false;
+  }
+}
+
+/**
+ * Emails the founder a season's full data export (sent when that season's prizes are confirmed).
+ * Same contract as sendLineupAlert: true for a real send or deliberately-not-configured, false for
+ * a genuine failure the caller can retry.
+ */
+export async function sendSeasonExportEmail(params: { seasonLabel: string; filename: string; file: Buffer }): Promise<boolean> {
+  const apiKey = process.env.RESEND_API_KEY;
+  const to = process.env.ALERT_EMAIL_TO;
+  const appBaseUrl = process.env.APP_BASE_URL ?? "http://localhost:3000";
+
+  if (!apiKey || !to) {
+    console.warn(`[season-export] RESEND_API_KEY or ALERT_EMAIL_TO not set — skipping the ${params.seasonLabel} export email.`);
+    return true;
+  }
+
+  try {
+    const resend = new Resend(apiKey);
+    const { error } = await resend.emails.send({
+      from: "Matchday XI <onboarding@resend.dev>",
+      to,
+      subject: `Matchday XI — ${params.seasonLabel} season export`,
+      text: [
+        `The ${params.seasonLabel} season's prizes have been confirmed. Attached is everything the app gathered that season:`,
+        "traction metrics, the final leaderboard, every prediction and its score, fixtures and official lineups,",
+        "private leagues and their standings, prize winners, and the players list.",
+        "",
+        `You can download it again any time from ${appBaseUrl}/admin/prizes`,
+      ].join("\n"),
+      attachments: [{ filename: params.filename, content: params.file }],
+    });
+    if (error) throw new Error(`${error.name}: ${error.message}`);
+    return true;
+  } catch (error) {
+    console.error("[season-export] Failed to send export email:", error);
     return false;
   }
 }

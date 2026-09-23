@@ -1,98 +1,51 @@
 import { prisma } from "@/lib/prisma";
-import { COMPETITION_CODES } from "@/lib/football-data/client";
-import { REAL_FIXTURES_ONLY } from "@/lib/real-fixture";
+import { listSeasons, seasonPredictionFilter, seasonStandings, type SeasonInfo } from "@/lib/seasons";
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-const DELETED_EMAIL_SUFFIX = "@deleted.matchday-xi.app";
 export const PRIZE_PLACES = 3;
-
-export interface SeasonInfo {
-  competitionId: string;
-  label: string; // "2026-27"
-  startDate: Date;
-  endDate: Date;
-  /** The season's last day has fully passed (UTC). */
-  ended: boolean;
-}
-
-function seasonInfo(competitionId: string, start: Date, end: Date, now: Date): SeasonInfo {
-  return {
-    competitionId,
-    label: `${start.getUTCFullYear()}-${String(end.getUTCFullYear()).slice(-2)}`,
-    startDate: start,
-    endDate: end,
-    ended: now.getTime() >= end.getTime() + DAY_MS,
-  };
-}
+export type { SeasonInfo } from "@/lib/seasons";
 
 /**
- * The season whose prizes are up for confirmation. Normally the Premier League's current season
- * (as last recorded by the standings sync) — but if football-data.org has already rolled over to
- * the next season and the previous one's prizes were never confirmed, it's that previous season:
- * otherwise a season not confirmed before the summer rollover could never be confirmed at all.
- * Null if no season dates are known yet.
+ * The season whose prizes are up for confirmation: the oldest season that has ended, had any
+ * scoring, and hasn't been confirmed yet — so a season not confirmed before football-data.org
+ * rolls over to the next one can still be confirmed afterwards. Otherwise the current season
+ * (shown with live standings until it ends). Seasons nobody scored in are skipped, so they can't
+ * sit "awaiting confirmation" forever and block the next one. Null if no seasons are known yet.
  */
 export async function getPrizeSeason(now = new Date()): Promise<SeasonInfo | null> {
-  const competition = await prisma.competition.findUnique({ where: { externalId: COMPETITION_CODES.PREMIER_LEAGUE } });
-  if (!competition) return null;
-
-  if (competition.previousSeasonStartDate && competition.previousSeasonEndDate) {
-    const previous = seasonInfo(competition.id, competition.previousSeasonStartDate, competition.previousSeasonEndDate, now);
+  const seasons = await listSeasons(now);
+  if (seasons.length === 0) return null;
+  for (const season of [...seasons].reverse()) {
+    if (!season.ended) continue;
     const [confirmed, scored] = await Promise.all([
-      prisma.seasonPrize.count({ where: { competitionId: competition.id, season: previous.label } }),
-      // A season nobody scored in has no podium to confirm — without this check it would sit
-      // "awaiting confirmation" forever and block the current season from ever being confirmed.
-      prisma.prediction.count({ where: { ...seasonPredictionFilter(previous), pointsAwarded: { gt: 0 } } }),
+      prisma.seasonPrize.count({ where: { competitionId: season.competitionId, season: season.label } }),
+      prisma.prediction.count({ where: { ...seasonPredictionFilter(season), pointsAwarded: { gt: 0 } } }),
     ]);
-    if (confirmed === 0 && scored > 0) return previous;
+    if (confirmed === 0 && scored > 0) return season;
   }
-  if (!competition.currentSeasonStartDate || !competition.currentSeasonEndDate) return null;
-  return seasonInfo(competition.id, competition.currentSeasonStartDate, competition.currentSeasonEndDate, now);
+  return seasons[0];
 }
 
 type PodiumClient = Pick<typeof prisma, "user" | "prediction">;
 
-/** Global predictions for real fixtures kicking off within the season (its last day included). */
-function seasonPredictionFilter(season: SeasonInfo) {
-  return {
-    privateLeagueId: null,
-    fixture: {
-      ...REAL_FIXTURES_ONLY,
-      kickoffAt: { gte: season.startDate, lt: new Date(season.endDate.getTime() + DAY_MS) },
-    },
-  };
-}
-
 /**
- * The season's top 3 as prize placings, ranked on points scored IN THAT SEASON — the sum of
- * global predictions for fixtures kicking off within the season's dates — not User.totalPoints,
- * which never resets and would carry one season's points into the next. Same tiebreaks as the
- * leaderboard (Perfect XIs in the season, then earliest sign-up — rulebook §9), minus anyone who
- * can't take a prize: flagged duplicate accounts (rulebook §10), deleted/anonymized accounts, and
- * anyone on zero points.
+ * The season's top 3 as prize placings: the top of that season's own standings (points scored in
+ * the season — see seasonStandings — never the all-time totals), minus anyone who can't take a
+ * prize: flagged duplicate accounts (rulebook §10), deleted/anonymized accounts, and anyone on
+ * zero points.
  */
 export async function provisionalPodium(season: SeasonInfo, client: PodiumClient = prisma) {
-  const inSeason = { ...seasonPredictionFilter(season), pointsAwarded: { not: null } };
-  const [pointsByUser, perfectByUser] = await Promise.all([
-    client.prediction.groupBy({ by: ["userId"], where: inSeason, _sum: { pointsAwarded: true } }),
-    client.prediction.groupBy({ by: ["userId"], where: { ...inSeason, isPerfectXi: true }, _count: { _all: true } }),
-  ]);
-  const points = new Map(pointsByUser.map((p) => [p.userId, p._sum.pointsAwarded ?? 0]));
-  const perfect = new Map(perfectByUser.map((p) => [p.userId, p._count._all]));
-
-  const users = await client.user.findMany({
-    where: {
-      id: { in: [...points.entries()].filter(([, pts]) => pts > 0).map(([id]) => id) },
-      isFlaggedDuplicate: false,
-      NOT: { email: { endsWith: DELETED_EMAIL_SUFFIX } },
-    },
-    select: { id: true, displayName: true, username: true, email: true, createdAt: true },
-  });
-
-  return users
-    .map((u) => ({ ...u, totalPoints: points.get(u.id) ?? 0, perfectXiCount: perfect.get(u.id) ?? 0 }))
-    .sort((a, b) => b.totalPoints - a.totalPoints || b.perfectXiCount - a.perfectXiCount || a.createdAt.getTime() - b.createdAt.getTime())
-    .slice(0, PRIZE_PLACES);
+  const standings = await seasonStandings(season, {}, client);
+  return standings
+    .filter((row) => !row.isFlaggedDuplicate && !row.isDeleted && row.totalPoints > 0)
+    .slice(0, PRIZE_PLACES)
+    .map((row) => ({
+      id: row.userId,
+      displayName: row.displayName,
+      username: row.username,
+      email: row.email,
+      totalPoints: row.totalPoints,
+      perfectXiCount: row.perfectXiCount,
+    }));
 }
 
 export class SeasonNotOverError extends Error {

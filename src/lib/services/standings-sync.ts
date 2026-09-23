@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { footballDataClient, COMPETITION_CODES } from "@/lib/football-data/client";
 import { upsertOpponentTeam } from "@/lib/services/fixture-sync";
+import { recomputeCurrentSeasonTotals, recordSeason } from "@/lib/seasons";
 
 /**
  * League table + season-long goals/assists leaderboard (rulebook §13). Deliberately does NOT
@@ -35,23 +36,21 @@ export async function syncStandingsAndScorers() {
   // lock held and no timeout pressure. This is exactly what broke once the scorers limit was
   // raised from 20 to 500 above — confirmed live: a 90-scorer response blew the transaction's
   // 20s timeout inside the old per-row-upsert loop (P2028, ~20.1s elapsed).
-  // Season dates ride along on the standings response — kept current so account deletion can tell
-  // whether a private-league creator's season is still running (lib/account-deletion.ts).
+  // Season dates ride along on the standings response. Kept on Competition for account deletion
+  // (lib/account-deletion.ts), and every season is recorded in the Season table (never
+  // overwritten) — the source for past-season leaderboards and prizes (lib/seasons.ts).
+  let seasonTotalsReset: number | null = null;
   if (season) {
-    // On rollover to a new season, keep the outgoing season's dates rather than overwrite them —
-    // its prizes may not have been confirmed yet (lib/season-prizes.ts).
-    const rolledOver =
-      competition.currentSeasonStartDate && competition.currentSeasonStartDate.toISOString().slice(0, 10) !== season.startDate;
+    const start = new Date(season.startDate);
+    const end = new Date(season.endDate);
     await prisma.competition.update({
       where: { id: competition.id },
-      data: {
-        currentSeasonStartDate: new Date(season.startDate),
-        currentSeasonEndDate: new Date(season.endDate),
-        ...(rolledOver
-          ? { previousSeasonStartDate: competition.currentSeasonStartDate, previousSeasonEndDate: competition.currentSeasonEndDate }
-          : {}),
-      },
+      data: { currentSeasonStartDate: start, currentSeasonEndDate: end },
     });
+    // A season seen for the first time is the rollover: the global leaderboard resets each season,
+    // so bring everyone's totals to the new season's (usually zero) straight away rather than
+    // waiting for the nightly self-check.
+    if (await recordSeason(competition.id, start, end)) seasonTotalsReset = await recomputeCurrentSeasonTotals();
   }
 
   const allTeamRefs = [...standings.map((s) => s.team), ...scorers.map((s) => s.team)];
@@ -117,5 +116,9 @@ export async function syncStandingsAndScorers() {
     { timeout: 30_000 },
   );
 
-  return { standingsSynced: standings.length, scorersSynced: scorers.length };
+  return {
+    standingsSynced: standings.length,
+    scorersSynced: scorers.length,
+    ...(seasonTotalsReset !== null ? { newSeasonRecorded: true, seasonTotalsReset } : {}),
+  };
 }

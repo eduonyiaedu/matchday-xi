@@ -21,13 +21,14 @@ export default async function AdminPrizesPage() {
   if (!user) redirect("/login");
   if (user.role !== "ADMIN") redirect("/fixtures");
 
-  const [draws, season] = await Promise.all([
+  const [draws, season, allSeasons] = await Promise.all([
     prisma.monthlyPrizeDraw.findMany({
       where: { drawnAt: { not: null } },
       orderBy: { month: "desc" },
       include: { winner: { select: { displayName: true, username: true, email: true } } },
     }),
     getPrizeSeason(),
+    prisma.season.findMany({ orderBy: { startDate: "desc" }, select: { label: true, endDate: true, exportEmailedAt: true } }),
   ]);
   const confirmed = season
     ? await prisma.seasonPrize.findMany({
@@ -113,6 +114,45 @@ export default async function AdminPrizesPage() {
                 {season.ended && provisional.length > 0 && <ConfirmSeasonPrizesButton season={season.label} />}
               </>
             )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Season data exports</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3 text-sm">
+            <p className="text-muted-foreground">
+              Everything gathered in a season, in one Excel workbook: traction metrics, the final
+              leaderboard, every prediction and score, fixtures and lineups, private leagues,
+              prize winners and the players list. Emailed to you automatically when you confirm a
+              season&apos;s winners; download it any time here (always built from the latest data).
+            </p>
+            {allSeasons.length === 0 && <p className="text-muted-foreground">No seasons recorded yet.</p>}
+            {allSeasons.map((s, i) => (
+              <div key={s.label} className="flex flex-wrap items-center justify-between gap-2 border-b pb-2 last:border-0">
+                <div>
+                  <p className="font-medium">
+                    {s.label} season{i === 0 ? " (current — data so far)" : ""}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {s.exportEmailedAt ? (
+                      <>
+                        Emailed to you <LocalTime iso={s.exportEmailedAt.toISOString()} dateOnly />
+                      </>
+                    ) : (
+                      "Not emailed yet — sent when this season's winners are confirmed"
+                    )}
+                  </p>
+                </div>
+                <a
+                  href={`/api/admin/season-export?season=${encodeURIComponent(s.label)}`}
+                  className="rounded-lg px-3 py-1.5 font-heading text-xs tracking-[0.1em] uppercase ring-1 ring-white/12 hover:bg-white/5"
+                >
+                  Download Excel
+                </a>
+              </div>
+            ))}
           </CardContent>
         </Card>
 

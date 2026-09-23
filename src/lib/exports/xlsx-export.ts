@@ -73,6 +73,19 @@ async function writeMetric(worksheet: ExcelJS.Worksheet, workbook: ExcelJS.Workb
   return row + 1;
 }
 
+/** One worksheet per metric section — shared by the metrics export and the season export. */
+export async function addMetricSheets(workbook: ExcelJS.Workbook, sections: MetricSection[]): Promise<void> {
+  for (const section of sections) {
+    const worksheet = workbook.addWorksheet(sheetName(section.title));
+    worksheet.getColumn(1).width = 32;
+    for (let i = 2; i <= 6; i++) worksheet.getColumn(i).width = 20;
+    let row = 1;
+    for (const metric of section.metrics) {
+      row = await writeMetric(worksheet, workbook, metric, row);
+    }
+  }
+}
+
 export async function buildXlsxWorkbook(sections: MetricSection[], range: DateRange): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Matchday XI";
@@ -90,15 +103,7 @@ export async function buildXlsxWorkbook(sections: MetricSection[], range: DateRa
   });
   cover.getColumn(1).width = 40;
 
-  for (const section of sections) {
-    const worksheet = workbook.addWorksheet(sheetName(section.title));
-    worksheet.getColumn(1).width = 32;
-    for (let i = 2; i <= 6; i++) worksheet.getColumn(i).width = 20;
-    let row = 1;
-    for (const metric of section.metrics) {
-      row = await writeMetric(worksheet, workbook, metric, row);
-    }
-  }
+  await addMetricSheets(workbook, sections);
 
   const arrayBuffer = await workbook.xlsx.writeBuffer();
   return Buffer.from(arrayBuffer);

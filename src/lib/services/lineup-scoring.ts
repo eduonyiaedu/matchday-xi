@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { scorePrediction } from "@/lib/scoring";
 import { sendPushToUsers } from "@/lib/push";
+import { SEASON_TOTALS_LOCK } from "@/lib/seasons";
 import type { LineupSource } from "@/generated/prisma/enums";
 
 /** Thrown when a fixture turns out to be VOIDED once inside the scoring transaction. */
@@ -51,6 +52,9 @@ export async function applyOfficialLineup(
   const { predictionsScored } = await prisma.$transaction(
     async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${fixtureId} || ':' || ${teamId}))`;
+      // Shared: scoring runs alongside other scoring, but never overlaps a season-totals recompute,
+      // which would otherwise overwrite this transaction's increments (see lib/seasons.ts).
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock_shared(hashtext(${SEASON_TOTALS_LOCK}))`;
 
       // Callers check status up front, but a postponement sync can void the fixture between that
       // check and here — scoring a voided fixture would re-award points void-fixture.ts just

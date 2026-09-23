@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { SEASON_TOTALS_LOCK } from "@/lib/seasons";
 
 /**
  * Voids a fixture: postponed/abandoned matches get no points awarded either way (rulebook §10).
@@ -14,6 +15,8 @@ export async function voidFixtureAndReversePoints(fixtureId: string) {
     // same user's totalPoints — the lock (plus re-reading status after acquiring it) makes the
     // second caller correctly see VOIDED and return without double-reversing.
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"void-fixture:" + fixtureId}))`;
+    // Shared, same as scoring: never overlaps a season-totals recompute (lib/seasons.ts).
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock_shared(hashtext(${SEASON_TOTALS_LOCK}))`;
     const fixture = await tx.fixture.findUniqueOrThrow({ where: { id: fixtureId } });
     if (fixture.status === "VOIDED") return;
 

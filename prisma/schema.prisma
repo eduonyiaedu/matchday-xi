@@ -203,13 +203,13 @@ model Competition {
   /// creator from deleting their account mid-season (see lib/account-deletion.ts).
   currentSeasonStartDate DateTime? @db.Date
   currentSeasonEndDate   DateTime? @db.Date
-  /// The season before the current one, kept when the standings sync sees football-data.org roll
-  /// over to a new season — so a season whose prizes weren't confirmed before the rollover can
-  /// still be confirmed afterwards (see lib/season-prizes.ts).
+  /// UNUSED — superseded by the Season table (2026-09-23). Always null; kept only because dropping
+  /// a column needs explicit founder consent under Prisma's data-loss guard. Safe to drop.
   previousSeasonStartDate DateTime? @db.Date
   previousSeasonEndDate   DateTime? @db.Date
 
   fixtures            Fixture[]
+  seasons             Season[]
   seasonPrizes        SeasonPrize[]
   restrictedByLeagues PrivateLeague[]
   standings           LeagueStanding[]
@@ -463,6 +463,26 @@ model MonthlyPrizeDraw {
   createdAt     DateTime  @default(now())
 
   @@index([winnerUserId])
+}
+
+/// Every season the app has seen, recorded by the standings sync from football-data.org's own
+/// season dates (one row per competition season, never overwritten). The latest by startDate is
+/// the current season. Past seasons' leaderboards and prizes are computed from predictions for
+/// fixtures within these dates — see lib/seasons.ts.
+model Season {
+  id            String      @id @default(uuid())
+  competitionId String
+  competition   Competition @relation(fields: [competitionId], references: [id])
+  /// e.g. "2026-27"
+  label         String
+  startDate     DateTime    @db.Date
+  endDate       DateTime    @db.Date
+  /// Set once the full season export has been emailed to the founder (sent when the season's
+  /// prizes are confirmed) — see lib/season-export.ts. Guards against sending it twice.
+  exportEmailedAt DateTime?
+  createdAt     DateTime    @default(now())
+
+  @@unique([competitionId, label])
 }
 
 /// One row each time a player actually shares (device share sheet) or saves their share card from
