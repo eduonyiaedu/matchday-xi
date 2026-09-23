@@ -133,10 +133,11 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const isFirstGlobalPrediction =
-    !privateLeagueId &&
-    !user.favoriteTeamLockedAt &&
-    (await prisma.prediction.count({ where: { userId: user.id, privateLeagueId: null } })) === 0;
+  // Any global prediction made while the club is unlocked locks it — a player's first ever, or
+  // their first of a new season (club locks are cleared when a season starts, lib/new-season.ts).
+  // It used to also require zero previous predictions, which would have left every returning
+  // player's club permanently unlocked after the first season.
+  const isFirstGlobalPrediction = !privateLeagueId && !user.favoriteTeamLockedAt;
 
   const scopeKey = scopeKeyFor(privateLeagueId);
   // Canonical order-independent signature — matches this app's own scoring rule that slot

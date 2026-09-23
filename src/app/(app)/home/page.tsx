@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { LocalTime } from "@/components/ui/local-time";
 import { TierDisc, tierFromPerfectXiCount } from "@/components/leaderboard/tier-disc";
 import { HomeAvatar } from "@/components/home/home-avatar";
+import { NewSeasonClubPrompt } from "@/components/home/new-season-club-prompt";
+import { listSeasons } from "@/lib/seasons";
 import { HeroPitchLines } from "@/components/home/hero-pitch-lines";
 import { LogoutButton } from "@/components/layout/logout-button";
 import { PushOptIn } from "@/components/push/push-opt-in";
@@ -28,12 +30,23 @@ export default async function HomePage() {
   if (!authedUser?.favoriteTeamId) return null; // (app) layout already redirects, this satisfies TS
   const favoriteTeamId = authedUser.favoriteTeamId;
 
-  const [user, predictionCount] = await Promise.all([
+  const [user, predictionCount, seasons] = await Promise.all([
     prisma.user.findUniqueOrThrow({ where: { id: authedUser.id }, include: { favoriteTeam: true } }),
     prisma.prediction.count({ where: { userId: authedUser.id, privateLeagueId: null } }),
+    listSeasons(),
   ]);
   const isNewUser = user.totalPoints === 0 && predictionCount === 0;
   const colors = getTeamColors(user.favoriteTeam!.externalId);
+
+  // New-season club question (lib/new-season.ts): only after a real rollover (a season before this
+  // one exists), only for players who joined before it began, until they answer or predict.
+  const currentSeason = seasons[0];
+  const askSeasonClub =
+    seasons.length > 1 &&
+    !!currentSeason &&
+    user.createdAt < currentSeason.startDate &&
+    !user.favoriteTeamLockedAt &&
+    user.seasonClubConfirmedFor !== currentSeason.label;
 
   const switchableTeams = user.favoriteTeamLockedAt
     ? []
@@ -121,6 +134,15 @@ export default async function HomePage() {
       </div>
 
       <PrizeWinBanner wins={prizeWins} />
+
+      {askSeasonClub && (
+        <NewSeasonClubPrompt
+          seasonLabel={currentSeason.label}
+          teamName={user.favoriteTeam?.name ?? "your club"}
+          teamId={favoriteTeamId}
+          teams={switchableTeams}
+        />
+      )}
 
       <PushOptIn />
 

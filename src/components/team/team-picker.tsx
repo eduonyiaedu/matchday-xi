@@ -125,8 +125,8 @@ export function TeamPicker({
                 </div>
               </div>
               <p className="text-sm text-chalk">
-                You can switch clubs freely until your first prediction locks. After that it&apos;s
-                permanent — points and Perfect XIs stay tied to this club.
+                You can switch clubs freely until your first prediction. After that it&apos;s locked
+                for the season — points and Perfect XIs stay tied to this club.
               </p>
               <Button size="lg" disabled={submitting} onClick={confirm}>
                 {submitting ? "Saving..." : "Lock it in"}

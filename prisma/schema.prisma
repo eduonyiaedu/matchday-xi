@@ -90,6 +90,10 @@ model User {
   /// Set the moment the user's first global/team prediction is submitted.
   /// Null => team is freely changeable. Non-null => team-change requests are rejected server-side (rulebook §2 v2.1).
   favoriteTeamLockedAt DateTime?
+  /// The season label (e.g. "2027-28") for which the player answered the new-season "keep or change
+  /// your club?" prompt on Home. Club locks are cleared when a new season starts (lib/new-season.ts),
+  /// and the prompt shows to returning players until they answer or make their first prediction.
+  seasonClubConfirmedFor String?
   role                 Role      @default(USER)
   currentStreak        Int       @default(0)
   longestStreak        Int       @default(0)
@@ -203,10 +207,6 @@ model Competition {
   /// creator from deleting their account mid-season (see lib/account-deletion.ts).
   currentSeasonStartDate DateTime? @db.Date
   currentSeasonEndDate   DateTime? @db.Date
-  /// UNUSED — superseded by the Season table (2026-09-23). Always null; kept only because dropping
-  /// a column needs explicit founder consent under Prisma's data-loss guard. Safe to drop.
-  previousSeasonStartDate DateTime? @db.Date
-  previousSeasonEndDate   DateTime? @db.Date
 
   fixtures            Fixture[]
   seasons             Season[]

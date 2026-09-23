@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { footballDataClient, COMPETITION_CODES } from "@/lib/football-data/client";
 import { upsertOpponentTeam } from "@/lib/services/fixture-sync";
-import { recomputeCurrentSeasonTotals, recordSeason } from "@/lib/seasons";
+import { recomputeCurrentSeasonTotals, recordSeason, seasonLabel } from "@/lib/seasons";
+import { startNewSeason } from "@/lib/new-season";
 
 /**
  * League table + season-long goals/assists leaderboard (rulebook §13). Deliberately does NOT
@@ -39,7 +40,7 @@ export async function syncStandingsAndScorers() {
   // Season dates ride along on the standings response. Kept on Competition for account deletion
   // (lib/account-deletion.ts), and every season is recorded in the Season table (never
   // overwritten) — the source for past-season leaderboards and prizes (lib/seasons.ts).
-  let seasonTotalsReset: number | null = null;
+  let newSeason: Record<string, unknown> | null = null;
   if (season) {
     const start = new Date(season.startDate);
     const end = new Date(season.endDate);
@@ -49,8 +50,14 @@ export async function syncStandingsAndScorers() {
     });
     // A season seen for the first time is the rollover: the global leaderboard resets each season,
     // so bring everyone's totals to the new season's (usually zero) straight away rather than
-    // waiting for the nightly self-check.
-    if (await recordSeason(competition.id, start, end)) seasonTotalsReset = await recomputeCurrentSeasonTotals();
+    // waiting for the nightly self-check — then, if there was a season before it (not the very
+    // first one ever recorded), unlock everyone's club and ask returning players to keep or change it.
+    if (await recordSeason(competition.id, start, end)) {
+      const seasonTotalsReset = await recomputeCurrentSeasonTotals();
+      const seasonsKnown = await prisma.season.count({ where: { competitionId: competition.id } });
+      const clubs = seasonsKnown > 1 ? await startNewSeason({ label: seasonLabel(start, end), startDate: start }) : null;
+      newSeason = { seasonTotalsReset, ...(clubs ?? {}) };
+    }
   }
 
   const allTeamRefs = [...standings.map((s) => s.team), ...scorers.map((s) => s.team)];
@@ -119,6 +126,6 @@ export async function syncStandingsAndScorers() {
   return {
     standingsSynced: standings.length,
     scorersSynced: scorers.length,
-    ...(seasonTotalsReset !== null ? { newSeasonRecorded: true, seasonTotalsReset } : {}),
+    ...(newSeason ? { newSeasonRecorded: true, ...newSeason } : {}),
   };
 }

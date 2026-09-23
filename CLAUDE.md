@@ -169,16 +169,22 @@ transaction even reads. Three fix patterns are established here, depending on wh
 
 ## Other gotchas worth knowing before you hit them yourself
 
-- **Anything scoped to one season (prizes, season rankings) must be computed from that season's own
-  match data — never from running totals that never reset.** `User.totalPoints` /
-  `perfectXiCount` accumulate forever (only scoring increments and voids decrement them), so a
-  season podium ranked on them would carry one season's points into the next. Confirmed by review
-  2026-09-23: `lib/season-prizes.ts` now sums `pointsAwarded` of global predictions for real
-  fixtures kicking off within the season's dates. Relatedly, season dates come from the standings
-  sync, which overwrites them every run — on rollover it now keeps the outgoing season in
-  `Competition.previousSeason*` so that season's prizes can still be confirmed. Note the global
-  leaderboard itself still shows all-time points; whether it should reset per season is an open
-  founder decision (flagged 2026-09-23, needed before the 2027-28 season).
+- **Anything scoped to one season (prizes, season rankings, past leaderboards) must be computed
+  from that season's own match data** — `lib/seasons.ts`'s `seasonStandings()` sums
+  `pointsAwarded` of global predictions for real fixtures kicking off within the season's dates.
+  Every season the standings sync sees is recorded in the `Season` table (never overwritten).
+  `User.totalPoints` / `perfectXiCount` are the *current* season's totals only (founder decision
+  2026-09-23: the global leaderboard resets each season, past seasons viewable via a dropdown) —
+  recomputed at rollover and nightly by `recomputeCurrentSeasonTotals()` under an exclusive
+  advisory lock that scoring/voiding take shared.
+- **"First time" rules must mean "first this season", not "first ever".** Club locks reset every
+  season (founder decision 2026-09-23): at rollover `lib/new-season.ts` clears
+  `favoriteTeamLockedAt`, pushes returning players, and Home asks "keep or change your club?"
+  until they answer (`User.seasonClubConfirmedFor`) or predict. The prediction route used to lock
+  only on a player's first prediction *ever* (`count === 0`), which would have left every
+  returning player's club unlocked forever from season two on — caught before it shipped. Any new
+  per-player "first X" check should be scoped to the season, or it silently stops working after
+  season one.
 
 - **A sync window that starts at "today" silently loses anything that finishes after its last
   run.** `fixture-sync.ts` asked football-data.org only for matches from today onward, so a match

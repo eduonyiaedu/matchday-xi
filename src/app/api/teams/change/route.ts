@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getOrCreateCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { changeTeamSchema } from "@/lib/validation";
+import { getCurrentSeason } from "@/lib/seasons";
 
 export const runtime = "nodejs";
 
@@ -9,13 +10,14 @@ export async function POST(request: NextRequest) {
   const user = await getOrCreateCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  // Rulebook §2 (v2.1): team is locked the moment the first global prediction is submitted. This
+  // Rulebook §2 (v2.1): team is locked the moment the first global prediction is submitted (each
+  // season — locks are cleared when a new season starts, lib/new-season.ts). This
   // first check is just a fast-path UX rejection — `user` here can be a stale snapshot if a
   // predictions/route.ts submission is mid-flight and about to set favoriteTeamLockedAt, so it
   // doesn't guard the actual write below.
   if (user.favoriteTeamLockedAt) {
     return NextResponse.json(
-      { error: "Your team is locked in after your first prediction and can't be changed." },
+      { error: "Your team is locked in for this season after your first prediction." },
       { status: 403 },
     );
   }
@@ -34,13 +36,15 @@ export async function POST(request: NextRequest) {
   // first-prediction submission that locks the team concurrently (between the snapshot check
   // above and here) can't be raced — whichever commits first wins, and the loser's update
   // affects zero rows instead of silently overwriting a just-locked team.
+  // Picking a club also answers the new-season "keep or change?" prompt on Home.
+  const season = await getCurrentSeason();
   const { count } = await prisma.user.updateMany({
     where: { id: user.id, favoriteTeamLockedAt: null },
-    data: { favoriteTeamId: team.id },
+    data: { favoriteTeamId: team.id, ...(season ? { seasonClubConfirmedFor: season.label } : {}) },
   });
   if (count === 0) {
     return NextResponse.json(
-      { error: "Your team is locked in after your first prediction and can't be changed." },
+      { error: "Your team is locked in for this season after your first prediction." },
       { status: 403 },
     );
   }
