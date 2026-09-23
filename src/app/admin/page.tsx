@@ -4,19 +4,37 @@ import { getOrCreateCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { DuplicateFlagList } from "@/components/admin/duplicate-flag-list";
 import { Footer } from "@/components/layout/footer";
 
-export default async function AdminPage() {
+export default async function AdminPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const user = await getOrCreateCurrentUser();
   if (!user) redirect("/login");
   if (user.role !== "ADMIN") redirect("/fixtures");
+
+  const q = (await searchParams).q?.trim().slice(0, 100) ?? "";
 
   const [unresolvedCount, users] = await Promise.all([
     // Anything not yet fully scored — lets the founder jump into manual entry early (e.g. a
     // known API outage) rather than only after the automated retries have given up.
     prisma.fixture.count({ where: { status: { in: ["LOCKED", "LINEUPS_FETCHED", "NEEDS_MANUAL_REVIEW"] } } }),
-    prisma.user.findMany({ orderBy: { createdAt: "desc" }, take: 30 }),
+    // Newest 30 by default; a search reaches any user, not just recent sign-ups — a duplicate
+    // account is often discovered long after it was created.
+    prisma.user.findMany({
+      where: q
+        ? {
+            OR: [
+              { email: { contains: q, mode: "insensitive" } },
+              { displayName: { contains: q, mode: "insensitive" } },
+              { username: { contains: q, mode: "insensitive" } },
+            ],
+          }
+        : undefined,
+      orderBy: { createdAt: "desc" },
+      take: 30,
+    }),
   ]);
 
   return (
@@ -76,8 +94,23 @@ export default async function AdminPage() {
           <CardHeader>
             <CardTitle className="text-base">Users — duplicate-account fair-play flag</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex flex-col gap-3">
+            <form method="GET" className="flex gap-2">
+              <Input name="q" defaultValue={q} placeholder="Search by email, name or username" className="max-w-sm" />
+              <Button type="submit" variant="outline" size="sm">
+                Search
+              </Button>
+              {q && (
+                <Link href="/admin" className="self-center text-xs text-muted-foreground hover:underline">
+                  Clear
+                </Link>
+              )}
+            </form>
+            <p className="text-xs text-muted-foreground">
+              {q ? `Up to 30 users matching "${q}"` : "Newest 30 users"}
+            </p>
             <DuplicateFlagList
+              key={q}
               users={users.map((u) => ({
                 id: u.id,
                 email: u.email,

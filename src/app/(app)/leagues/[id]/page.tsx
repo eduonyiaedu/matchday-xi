@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getOrCreateCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { formatCalendarDay, leagueWindowEndExclusive } from "@/lib/league-window";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -76,8 +77,9 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
               : "any Premier League club (each member picks their own at join time)"}
           </p>
           <p>
-            Active window: <LocalTime iso={league.startDate.toISOString()} dateOnly /> –{" "}
-            <LocalTime iso={league.endDate.toISOString()} dateOnly />
+            {/* Calendar days stored as UTC midnight — rendered in UTC, not the viewer's timezone,
+                or anyone west of UTC would see every date shifted a day early. */}
+            Active window: {formatCalendarDay(league.startDate)} – {formatCalendarDay(league.endDate)}
           </p>
           <p className="text-muted-foreground">Free to join — paid entry isn&apos;t live yet.</p>
         </CardContent>
@@ -235,7 +237,7 @@ async function getLeagueHistory(
     where: {
       status: { in: ["SCORED", "VOIDED"] },
       OR: [{ homeTeamId: teamId }, { awayTeamId: teamId }],
-      kickoffAt: { gte: league.startDate, lt: league.endDate },
+      kickoffAt: { gte: league.startDate, lt: leagueWindowEndExclusive(league.endDate) },
     },
     include: { homeTeam: true, awayTeam: true },
     orderBy: { kickoffAt: "desc" },
@@ -256,7 +258,7 @@ async function getEligibleFixtures(
     where: {
       status: { in: ["SCHEDULED", "LOCKED", "LINEUPS_FETCHED", "NEEDS_MANUAL_REVIEW"] },
       OR: [{ homeTeamId: memberTeamId }, { awayTeamId: memberTeamId }],
-      kickoffAt: { gte: league.startDate, lt: league.endDate },
+      kickoffAt: { gte: league.startDate, lt: leagueWindowEndExclusive(league.endDate) },
     },
     include: { homeTeam: true, awayTeam: true },
     orderBy: { kickoffAt: "asc" },

@@ -15,9 +15,10 @@ export async function POST(request: NextRequest) {
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Invalid input" }, { status: 400 });
 
-  const user = await prisma.user.update({
+  const { count } = await prisma.user.updateMany({
     where: { id: parsed.data.userId },
     data: { isFlaggedDuplicate: parsed.data.flagged },
   });
-  return NextResponse.json({ user });
+  if (count === 0) return NextResponse.json({ error: "User not found" }, { status: 404 });
+  return NextResponse.json({ userId: parsed.data.userId, flagged: parsed.data.flagged });
 }

@@ -97,14 +97,21 @@ async function syncPremierLeagueTeamsAndSquads() {
     }
 
     // Deactivate (never delete — preserves prediction history) players no longer on this squad.
-    await prisma.squadPlayer.updateMany({
-      where: {
-        teamId: dbTeam.id,
-        isActive: true,
-        footballDataId: { notIn: Array.from(seenFootballDataIds) },
-      },
-      data: { isActive: false },
-    });
+    // Skipped when the provider returned an empty squad: a Premier League club never genuinely
+    // has zero players, so that's a provider hiccup — and `notIn: []` matches every row, which
+    // would wipe the club's entire squad out of the pitch builder until the next sync.
+    if (seenFootballDataIds.size > 0) {
+      await prisma.squadPlayer.updateMany({
+        where: {
+          teamId: dbTeam.id,
+          isActive: true,
+          footballDataId: { notIn: Array.from(seenFootballDataIds) },
+        },
+        data: { isActive: false },
+      });
+    } else {
+      console.warn(`[fixture-sync] Empty squad returned for ${dbTeam.name} — skipped deactivation.`);
+    }
 
     await prisma.team.update({ where: { id: dbTeam.id }, data: { squadLastSyncedAt: new Date() } });
   }

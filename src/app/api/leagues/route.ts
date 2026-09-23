@@ -47,8 +47,9 @@ export async function POST(request: NextRequest) {
   if (data.teamRule === "SINGLE_TEAM" && !data.restrictedTeamId) {
     return NextResponse.json({ error: "restrictedTeamId is required for the SINGLE_TEAM rule" }, { status: 400 });
   }
-  if (data.endDate <= data.startDate) {
-    return NextResponse.json({ error: "endDate must be after startDate" }, { status: 400 });
+  // The end date is inclusive (see lib/league-window.ts), so a one-day league (end == start) is valid.
+  if (data.endDate < data.startDate) {
+    return NextResponse.json({ error: "endDate can't be before startDate" }, { status: 400 });
   }
 
   const team = await prisma.team.findUnique({ where: { id: data.teamId } });

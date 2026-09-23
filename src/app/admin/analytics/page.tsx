@@ -1,15 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getOrCreateCurrentUser } from "@/lib/auth";
-import { getAdminMetrics } from "@/lib/admin-metrics";
+import { getAdminMetrics, parseMetricsRange } from "@/lib/admin-metrics";
 import { MetricCard } from "@/components/admin/metric-card";
 import { MetricsDateRangeForm } from "@/components/admin/metrics-date-range-form";
 import { MetricsExportButtons } from "@/components/admin/metrics-export-buttons";
 import { Footer } from "@/components/layout/footer";
-
-function isoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
 
 export default async function AdminAnalyticsPage({
   searchParams,
@@ -21,13 +17,9 @@ export default async function AdminAnalyticsPage({
   if (user.role !== "ADMIN") redirect("/fixtures");
 
   const { from: fromParam, to: toParam } = await searchParams;
-  const now = new Date();
-  const defaultFrom = isoDate(new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000));
-  const defaultTo = isoDate(now);
-  const from = fromParam ? new Date(fromParam) : new Date(defaultFrom);
-  const to = toParam ? new Date(toParam) : new Date(defaultTo);
+  const { range, fromInput, toInput } = parseMetricsRange(fromParam, toParam);
 
-  const sections = await getAdminMetrics({ from, to });
+  const sections = await getAdminMetrics(range);
 
   return (
     <div className="flex min-h-svh flex-col">
@@ -43,8 +35,8 @@ export default async function AdminAnalyticsPage({
         </div>
 
         <div className="flex flex-wrap items-end justify-between gap-4">
-          <MetricsDateRangeForm defaultFrom={fromParam ?? defaultFrom} defaultTo={toParam ?? defaultTo} />
-          <MetricsExportButtons from={fromParam ?? defaultFrom} to={toParam ?? defaultTo} />
+          <MetricsDateRangeForm defaultFrom={fromInput} defaultTo={toInput} />
+          <MetricsExportButtons from={fromInput} to={toInput} />
         </div>
 
         {sections.map((section) => (

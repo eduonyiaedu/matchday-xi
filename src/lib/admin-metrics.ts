@@ -5,6 +5,33 @@ export interface DateRange {
   to: Date;
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function parseDay(value: string | null | undefined): Date | null {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+/**
+ * Turns the analytics page's `?from=YYYY-MM-DD&to=YYYY-MM-DD` into a range where BOTH chosen
+ * days are fully included — `to` is the last millisecond of its day, not its midnight (which
+ * silently dropped the whole end day from every `lte: range.to` query). A malformed value falls
+ * back to the default instead of producing an Invalid Date that crashes Prisma. Shared by the
+ * page and the export route so a downloaded report always matches what's on screen.
+ */
+export function parseMetricsRange(fromParam: string | null | undefined, toParam: string | null | undefined, now = new Date()) {
+  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const fromDay = parseDay(fromParam) ?? new Date(today.getTime() - 90 * DAY_MS);
+  const toDay = parseDay(toParam) ?? today;
+  const range: DateRange = { from: fromDay, to: new Date(toDay.getTime() + DAY_MS - 1) };
+  return {
+    range,
+    fromInput: fromDay.toISOString().slice(0, 10),
+    toInput: toDay.toISOString().slice(0, 10),
+  };
+}
+
 export type MetricKind = "number" | "percent" | "duration" | "timeseries" | "table";
 
 /**

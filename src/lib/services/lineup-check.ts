@@ -139,14 +139,21 @@ export async function checkLineupsAndScore() {
           foundAny = true;
         }
 
+        // Both status writes below are conditional in the WHERE clause itself, not read-then-write:
+        // an admin saving the other side's lineup (or a postponement void) can land between a
+        // read and a write, and an unconditional update would drag a just-SCORED fixture back to
+        // LINEUPS_FETCHED/NEEDS_MANUAL_REVIEW, or un-void a voided one.
         if (foundAny) {
-          const refreshed = await prisma.fixture.findUniqueOrThrow({ where: { id: fixture.id } });
-          if (refreshed.status !== "SCORED") {
-            await prisma.fixture.update({ where: { id: fixture.id }, data: { status: "LINEUPS_FETCHED" } });
-          }
-          results.push({ fixtureId: fixture.id, outcome: refreshed.status === "SCORED" ? "scored" : "partial (one side found)" });
+          const { count } = await prisma.fixture.updateMany({
+            where: { id: fixture.id, status: { notIn: ["SCORED", "VOIDED"] } },
+            data: { status: "LINEUPS_FETCHED" },
+          });
+          results.push({ fixtureId: fixture.id, outcome: count === 0 ? "scored" : "partial (one side found)" });
         } else if (now >= fixture.kickoffAt) {
-          await prisma.fixture.update({ where: { id: fixture.id }, data: { status: "NEEDS_MANUAL_REVIEW" } });
+          await prisma.fixture.updateMany({
+            where: { id: fixture.id, status: { notIn: ["SCORED", "VOIDED"] } },
+            data: { status: "NEEDS_MANUAL_REVIEW" },
+          });
           await alertOnce(fixture, matchLabel, "Kickoff passed with no official lineup found after retrying.");
           results.push({ fixtureId: fixture.id, outcome: "kickoff passed, no lineup — flagged for review" });
         } else {

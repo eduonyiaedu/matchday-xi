@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { leagueEndDateLowerBoundFor } from "@/lib/league-window";
 import { sendPushToUsers, type PushPayload } from "@/lib/push";
 import { scopeKeyFor } from "@/lib/prediction-scope";
 import type { Fixture, Team } from "@/generated/prisma/client";
@@ -67,7 +68,10 @@ export async function matchdayNotifySweep() {
             where: {
               status: "APPROVED",
               teamId: { in: [fixture.homeTeamId, fixture.awayTeamId] },
-              league: { startDate: { lte: fixture.kickoffAt }, endDate: { gt: fixture.kickoffAt } },
+              league: {
+                startDate: { lte: fixture.kickoffAt },
+                endDate: { gt: leagueEndDateLowerBoundFor(fixture.kickoffAt) },
+              },
             },
             include: { league: true },
           });

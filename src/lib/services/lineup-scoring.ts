@@ -3,6 +3,14 @@ import { scorePrediction } from "@/lib/scoring";
 import { sendPushToUsers } from "@/lib/push";
 import type { LineupSource } from "@/generated/prisma/enums";
 
+/** Thrown when a fixture turns out to be VOIDED once inside the scoring transaction. */
+export class FixtureVoidedError extends Error {
+  constructor(fixtureId: string) {
+    super(`Fixture ${fixtureId} is voided and can't be scored.`);
+    this.name = "FixtureVoidedError";
+  }
+}
+
 export interface LineupEntryInput {
   squadPlayerId: string | null;
   rawApiFootballPlayerId: number | null;
@@ -36,6 +44,12 @@ export async function applyOfficialLineup(
   const { predictionsScored } = await prisma.$transaction(
     async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${fixtureId} || ':' || ${teamId}))`;
+
+      // Callers check status up front, but a postponement sync can void the fixture between that
+      // check and here — scoring a voided fixture would re-award points void-fixture.ts just
+      // reversed.
+      const current = await tx.fixture.findUniqueOrThrow({ where: { id: fixtureId }, select: { status: true } });
+      if (current.status === "VOIDED") throw new FixtureVoidedError(fixtureId);
 
       const officialLineup = await tx.officialLineup.upsert({
         where: { fixtureId_teamId: { fixtureId, teamId } },
@@ -120,7 +134,7 @@ export async function applyOfficialLineup(
     const bothDone =
       refreshed.some((l) => l.teamId === fixture.homeTeamId) &&
       refreshed.some((l) => l.teamId === fixture.awayTeamId);
-    const justScored = bothDone && fixture.status !== "SCORED";
+    const justScored = bothDone && fixture.status !== "SCORED" && fixture.status !== "VOIDED";
     if (justScored) {
       await tx.fixture.update({ where: { id: fixtureId }, data: { status: "SCORED" } });
     }

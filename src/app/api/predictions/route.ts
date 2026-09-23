@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOrCreateCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { leagueWindowEndExclusive } from "@/lib/league-window";
 import { submitPredictionSchema } from "@/lib/validation";
 import { scopeKeyFor } from "@/lib/prediction-scope";
 import { getNextEligibleFixture, isPredictionWindowOpen } from "@/lib/next-fixture";
@@ -89,7 +90,7 @@ export async function POST(request: NextRequest) {
     if (membership.teamId !== teamId) {
       return NextResponse.json({ error: "This league requires your assigned team" }, { status: 400 });
     }
-    if (fixture.kickoffAt < league.startDate || fixture.kickoffAt >= league.endDate) {
+    if (fixture.kickoffAt < league.startDate || fixture.kickoffAt >= leagueWindowEndExclusive(league.endDate)) {
       return NextResponse.json({ error: "This fixture is outside the league's active window" }, { status: 400 });
     }
     if (league.teamRule === "SINGLE_TEAM" && league.restrictedTeamId !== teamId) {

@@ -27,23 +27,32 @@ export default async function ManualLineupPage({
   });
   if (!fixture) notFound();
 
+  const lineupFor = (teamId: string) => fixture.officialLineups.find((l) => l.teamId === teamId);
+  const savedIds = (teamId: string) =>
+    lineupFor(teamId)?.players.map((p) => p.squadPlayerId).filter((id): id is string => !!id) ?? [];
+
+  // Active squad PLUS anyone already in this fixture's saved lineup, even if a squad sync has
+  // since deactivated them — otherwise re-saving a correction would silently drop a real starter
+  // and force the founder to pick a wrong 11th player to get back to 11.
   const [homeSquad, awaySquad] = await Promise.all([
     prisma.squadPlayer.findMany({
-      where: { teamId: fixture.homeTeamId, isActive: true },
+      where: { teamId: fixture.homeTeamId, OR: [{ isActive: true }, { id: { in: savedIds(fixture.homeTeamId) } }] },
       orderBy: { name: "asc" },
     }),
     prisma.squadPlayer.findMany({
-      where: { teamId: fixture.awayTeamId, isActive: true },
+      where: { teamId: fixture.awayTeamId, OR: [{ isActive: true }, { id: { in: savedIds(fixture.awayTeamId) } }] },
       orderBy: { name: "asc" },
     }),
   ]);
 
-  const lineupFor = (teamId: string) => fixture.officialLineups.find((l) => l.teamId === teamId);
-  // A player picked in a prior manual entry may have since been deactivated (e.g. transferred
-  // out) by the squad sync — drop them from the pre-checked set rather than pre-checking someone
-  // who no longer has a checkbox to uncheck, which would otherwise block ever re-saving.
-  const homeActiveIds = new Set(homeSquad.map((p) => p.id));
-  const awayActiveIds = new Set(awaySquad.map((p) => p.id));
+  // Previously saved starters who weren't in the squad data at all (recorded by name only).
+  const savedUnlisted = (teamId: string) =>
+    lineupFor(teamId)
+      ?.players.filter((p) => !p.squadPlayerId)
+      .map((p) => ({ name: p.rawName, isGoalkeeper: p.isGoalkeeper })) ?? [];
+  const lineupEntryOpen =
+    ["LOCKED", "LINEUPS_FETCHED", "NEEDS_MANUAL_REVIEW", "SCORED"].includes(fixture.status) &&
+    new Date() >= fixture.lockAt;
 
   return (
     <div className="flex min-h-svh flex-col">
@@ -60,33 +69,35 @@ export default async function ManualLineupPage({
           </p>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">{fixture.homeTeam.name} (home)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ManualLineupForm
-              fixtureId={fixture.id}
-              teamId={fixture.homeTeamId}
-              squad={homeSquad.map((p) => ({ id: p.id, name: p.name, shirtNumber: p.shirtNumber, position: p.position }))}
-              initialSelected={lineupFor(fixture.homeTeamId)?.players.map((p) => p.squadPlayerId).filter((id): id is string => !!id && homeActiveIds.has(id)) ?? []}
-            />
-          </CardContent>
-        </Card>
+        {!lineupEntryOpen && (
+          <Card>
+            <CardContent className="pt-4 text-sm text-muted-foreground">
+              Lineups can only be entered once a fixture has locked, and never for a voided fixture.
+              This one is currently {fixture.status}.
+            </CardContent>
+          </Card>
+        )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">{fixture.awayTeam.name} (away)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ManualLineupForm
-              fixtureId={fixture.id}
-              teamId={fixture.awayTeamId}
-              squad={awaySquad.map((p) => ({ id: p.id, name: p.name, shirtNumber: p.shirtNumber, position: p.position }))}
-              initialSelected={lineupFor(fixture.awayTeamId)?.players.map((p) => p.squadPlayerId).filter((id): id is string => !!id && awayActiveIds.has(id)) ?? []}
-            />
-          </CardContent>
-        </Card>
+        {lineupEntryOpen &&
+          [
+            { teamId: fixture.homeTeamId, label: `${fixture.homeTeam.name} (home)`, squad: homeSquad },
+            { teamId: fixture.awayTeamId, label: `${fixture.awayTeam.name} (away)`, squad: awaySquad },
+          ].map((side) => (
+            <Card key={side.teamId}>
+              <CardHeader>
+                <CardTitle className="text-base">{side.label}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ManualLineupForm
+                  fixtureId={fixture.id}
+                  teamId={side.teamId}
+                  squad={side.squad.map((p) => ({ id: p.id, name: p.name, shirtNumber: p.shirtNumber, position: p.position }))}
+                  initialSelected={savedIds(side.teamId)}
+                  initialUnlisted={savedUnlisted(side.teamId)}
+                />
+              </CardContent>
+            </Card>
+          ))}
       </div>
       <Footer />
     </div>
