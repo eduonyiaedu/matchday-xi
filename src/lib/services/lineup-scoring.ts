@@ -11,6 +11,13 @@ export class FixtureVoidedError extends Error {
   }
 }
 
+/** Keeps each `IN (...)` list well under Postgres's 32,767 bind-parameter limit per statement. */
+function chunked<T>(items: T[], size = 5_000): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+  return chunks;
+}
+
 export interface LineupEntryInput {
   squadPlayerId: string | null;
   rawApiFootballPlayerId: number | null;
@@ -61,50 +68,89 @@ export async function applyOfficialLineup(
       // entries — the latest confirmed XI always supersedes what came before (rulebook §6).
       await tx.officialLineupPlayer.deleteMany({ where: { officialLineupId: officialLineup.id } });
 
-      for (const entry of entries) {
-        await tx.officialLineupPlayer.create({
-          data: {
-            officialLineupId: officialLineup.id,
-            squadPlayerId: entry.squadPlayerId,
-            rawApiFootballPlayerId: entry.rawApiFootballPlayerId,
-            rawName: entry.rawName,
-            isGoalkeeper: entry.isGoalkeeper,
-          },
-        });
-      }
+      await tx.officialLineupPlayer.createMany({
+        data: entries.map((entry) => ({
+          officialLineupId: officialLineup.id,
+          squadPlayerId: entry.squadPlayerId,
+          rawApiFootballPlayerId: entry.rawApiFootballPlayerId,
+          rawName: entry.rawName,
+          isGoalkeeper: entry.isGoalkeeper,
+        })),
+      });
 
       const predictions = await tx.prediction.findMany({
         where: { fixtureId, teamId },
-        include: { slots: true },
+        select: {
+          id: true,
+          userId: true,
+          privateLeagueId: true,
+          pointsAwarded: true,
+          isPerfectXi: true,
+          slots: { select: { squadPlayerId: true } },
+        },
       });
 
+      // Set-based writes, not per-prediction ones: this all runs inside a 20s transaction, and
+      // the old loop issued ~13 sequential statements PER prediction (1 prediction + 11 slots +
+      // 1 user), which would blow the timeout at a few hundred predictions for one team. A score
+      // depends only on the correct-pick count, so predictions collapse into at most 12 distinct
+      // outcomes and every write below is one statement per outcome group — the statement count
+      // stays roughly constant however many predictions there are.
+
+      // Slot correctness is the same test for every prediction: was this player in the XI?
+      // (`notIn: []` matches every row, so an XI with no resolved players marks all slots wrong.)
+      const slotsOfThisTeam = { prediction: { fixtureId, teamId } };
+      await tx.predictionSlot.updateMany({
+        where: { ...slotsOfThisTeam, squadPlayerId: { in: resolvedPlayerIds } },
+        data: { isCorrect: true },
+      });
+      await tx.predictionSlot.updateMany({
+        where: { ...slotsOfThisTeam, squadPlayerId: { notIn: resolvedPlayerIds } },
+        data: { isCorrect: false },
+      });
+
+      const scoredAt = new Date();
+      const predictionIdsByOutcome = new Map<string, { pointsAwarded: number; isPerfectXi: boolean; ids: string[] }>();
+      const userIdsByDelta = new Map<string, { pointsDelta: number; perfectXiDelta: number; ids: string[] }>();
+
       for (const prediction of predictions) {
-        const predictedIds = prediction.slots.map((s) => s.squadPlayerId);
-        const { correctSquadPlayerIds, pointsAwarded, isPerfectXi } = scorePrediction(
-          predictedIds,
+        const { pointsAwarded, isPerfectXi } = scorePrediction(
+          prediction.slots.map((s) => s.squadPlayerId),
           resolvedPlayerIds,
         );
-        const correctSet = new Set(correctSquadPlayerIds);
+        const outcomeKey = `${pointsAwarded}:${isPerfectXi}`;
+        const outcome = predictionIdsByOutcome.get(outcomeKey) ?? { pointsAwarded, isPerfectXi, ids: [] };
+        outcome.ids.push(prediction.id);
+        predictionIdsByOutcome.set(outcomeKey, outcome);
+
         // This same prediction may already have been scored once (a corrected lineup, or a second
         // automated pass) — apply only the NET change against the user's denormalized totals rather
         // than incrementing again on top of a prior award, which would double-count every re-score.
         const pointsDelta = pointsAwarded - (prediction.pointsAwarded ?? 0);
         const perfectXiDelta = (isPerfectXi ? 1 : 0) - (prediction.isPerfectXi ? 1 : 0);
+        // Private-league predictions score separately and never touch global/team totals (§12b).
+        // A user has at most one global prediction per fixture (scopeKey unique), so no user id
+        // can land in two groups here.
+        if (!prediction.privateLeagueId && (pointsDelta !== 0 || perfectXiDelta !== 0)) {
+          const deltaKey = `${pointsDelta}:${perfectXiDelta}`;
+          const group = userIdsByDelta.get(deltaKey) ?? { pointsDelta, perfectXiDelta, ids: [] };
+          group.ids.push(prediction.userId);
+          userIdsByDelta.set(deltaKey, group);
+        }
+      }
 
-        await tx.prediction.update({
-          where: { id: prediction.id },
-          data: { pointsAwarded, isPerfectXi, scoredAt: new Date() },
-        });
-        for (const slot of prediction.slots) {
-          await tx.predictionSlot.update({
-            where: { id: slot.id },
-            data: { isCorrect: correctSet.has(slot.squadPlayerId) },
+      for (const { pointsAwarded, isPerfectXi, ids } of predictionIdsByOutcome.values()) {
+        for (const chunk of chunked(ids)) {
+          await tx.prediction.updateMany({
+            where: { id: { in: chunk } },
+            data: { pointsAwarded, isPerfectXi, scoredAt },
           });
         }
-        // Private-league predictions score separately and never touch global/team totals (§12b).
-        if (!prediction.privateLeagueId && (pointsDelta !== 0 || perfectXiDelta !== 0)) {
-          await tx.user.update({
-            where: { id: prediction.userId },
+      }
+      for (const { pointsDelta, perfectXiDelta, ids } of userIdsByDelta.values()) {
+        for (const chunk of chunked(ids)) {
+          await tx.user.updateMany({
+            where: { id: { in: chunk } },
             data: {
               totalPoints: { increment: pointsDelta },
               perfectXiCount: { increment: perfectXiDelta },

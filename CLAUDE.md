@@ -185,3 +185,10 @@ transaction even reads. Three fix patterns are established here, depending on wh
   — standings and scorers reference the same 20 PL clubs, so resolving them once outside the
   transaction turned ~110 potential upserts into ~20) and replace a per-row loop with a single
   `createMany` wherever the rows don't need individual per-row branching logic.
+  **Rows that DO need different values can usually still be written in groups:** inside a
+  transaction, bucket rows by the value they'll receive and issue one `updateMany` per bucket, so
+  the statement count stays constant as data grows instead of scaling per row. `lineup-scoring.ts`
+  does this — a score depends only on the correct-pick count, so predictions collapse into ≤12
+  outcome groups; the old per-prediction loop (~13 statements each) was confirmed live to hit the
+  20s timeout at 1,200 predictions for one team, while the grouped version (~35 statements total)
+  scored the same data correctly in ~5s even from a 110ms-round-trip dev machine.
