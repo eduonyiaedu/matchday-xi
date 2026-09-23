@@ -115,6 +115,16 @@ transaction even reads. Three fix patterns are established here, depending on wh
   can retry rather than permanently marking something "handled" that was actually just lost. Return
   a boolean (or similar) rather than swallowing everything into `void`. Both `lib/notify.ts` and
   `lib/push.ts` follow this now — if a new best-effort sender gets added, match it.
+- **A "do this once" step must keep retrying until it has succeeded — never hang it off "did this
+  run just create the row?"** That condition is true for exactly one run, so if that run fails
+  (a timeout, a DB blip, the function killed at its time limit) the step is silently skipped
+  forever. Confirmed by review 2026-09-23 on the season rollover (clearing club locks + pushes
+  hung off `recordSeason()` returning "new") and the season export email (flag set before the
+  send, so a killed function left it showing "Emailed" with nothing sent). Pattern now used by
+  `Season.rolloverClaimedAt/rolloverDoneAt` (lib/new-season.ts) and
+  `Season.exportEmailClaimedAt/exportEmailedAt` (lib/season-export.ts): an atomic claim
+  (`updateMany` where not done and the claim is null *or older than ~10 min*, so a killed run's
+  claim can be retaken), mark done only after the work succeeds, release the claim on failure.
 - **For anything that notifies users, keep "who gets what" separate from actually sending.** The
   founder's phone is the only real device with push enabled, and the database is shared with live
   verification — so calling a real sender in a test pings the founder. `lib/prize-notify.ts`
@@ -161,6 +171,11 @@ transaction even reads. Three fix patterns are established here, depending on wh
   enrichment leaves the club unstamped) and must NOT treat it as a failure or alert on it.
   Worst realistic day (10 simultaneous kickoffs, all 20 clubs followed) is ~31 lineup requests
   (one shared `/fixtures?date=` lookup + ≤3 lineup checks per match) + 6 squad-enrichment = ~37.
+- **To check whether the API-Football account itself is working, call `/status`** — it doesn't
+  count against the daily request quota. Confirmed 2026-09-23: the account was **suspended**
+  (every endpoint, `/status` included, answers `errors.access: "Your account is suspended…"`),
+  which surfaced only as the daily SYNC_SHIRT_NUMBERS job failing. While suspended, automated
+  lineup fetching fails for every match and each one falls back to manual entry + an alert email.
 - **Match API-Football data to ours by club ID, never by name.** football-data.org and
   API-Football use different club names ("Arsenal FC" vs "Arsenal") and unrelated team-id spaces;
   use `src/lib/api-football/match.ts` (backed by the static `API_FOOTBALL_CLUB_TEAM_IDS` table).

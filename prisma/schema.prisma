@@ -87,7 +87,8 @@ model User {
   displayName          String
   favoriteTeamId       String?
   favoriteTeam         Team?     @relation(fields: [favoriteTeamId], references: [id])
-  /// Set the moment the user's first global/team prediction is submitted.
+  /// Set the moment the user's first global/team prediction of the season is submitted (cleared
+  /// at each new season's rollover for anyone who hasn't predicted in it yet — lib/new-season.ts).
   /// Null => team is freely changeable. Non-null => team-change requests are rejected server-side (rulebook §2 v2.1).
   favoriteTeamLockedAt DateTime?
   /// The season label (e.g. "2027-28") for which the player answered the new-season "keep or change
@@ -480,6 +481,14 @@ model Season {
   /// Set once the full season export has been emailed to the founder (sent when the season's
   /// prizes are confirmed) — see lib/season-export.ts. Guards against sending it twice.
   exportEmailedAt DateTime?
+  /// In-progress claim on sending that email. A claim that never completed (the function was
+  /// killed mid-build) goes stale after a few minutes and can be claimed again.
+  exportEmailClaimedAt DateTime?
+  /// Start-of-season work (totals reset, club locks cleared, "keep or change your club?" pushes —
+  /// lib/new-season.ts). Claimed/done as two steps so a failed or killed run is retried by the next
+  /// standings sync instead of being silently skipped forever.
+  rolloverClaimedAt DateTime?
+  rolloverDoneAt    DateTime?
   createdAt     DateTime    @default(now())
 
   @@unique([competitionId, label])

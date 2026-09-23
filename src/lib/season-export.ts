@@ -220,26 +220,42 @@ export function seasonExportFilename(season: SeasonInfo) {
   return `matchday-xi-season-${season.label}.xlsx`;
 }
 
+/** An export-email claim older than this that never finished (function killed mid-build) can be retaken. */
+const STALE_EXPORT_CLAIM_MS = 10 * 60 * 1000;
+
 /**
- * Emails the season export to the founder exactly once per season (atomic claim on
- * Season.exportEmailedAt), called after the season's prizes are confirmed. Best-effort: if the
- * send genuinely fails the claim is released, so confirming again (or the admin download) is
- * still available — and it never blocks or undoes the prize confirmation itself.
+ * Emails the season export to the founder: automatically once per season after its prizes are
+ * confirmed, or on demand from /admin/prizes (`resend`). Claimed atomically on
+ * Season.exportEmailClaimedAt, and exportEmailedAt is only set once the send has actually gone —
+ * so /admin/prizes never shows "Emailed" for an email that died with its function, and a stale
+ * claim (a killed run) can be retaken. A failed send releases the claim. Never blocks or undoes
+ * the prize confirmation itself.
  */
-export async function emailSeasonExportIfNeeded(season: SeasonInfo): Promise<boolean> {
+export async function emailSeasonExportIfNeeded(season: SeasonInfo, opts: { resend?: boolean } = {}): Promise<boolean> {
   const { count } = await prisma.season.updateMany({
-    where: { id: season.id, exportEmailedAt: null },
-    data: { exportEmailedAt: new Date() },
+    where: {
+      id: season.id,
+      ...(opts.resend ? {} : { exportEmailedAt: null }),
+      OR: [
+        { exportEmailClaimedAt: null },
+        { exportEmailClaimedAt: { lt: new Date(Date.now() - STALE_EXPORT_CLAIM_MS) } },
+      ],
+    },
+    data: { exportEmailClaimedAt: new Date() },
   });
   if (count === 0) return false;
   try {
     const file = await buildSeasonExport(season);
     const sent = await sendSeasonExportEmail({ seasonLabel: season.label, filename: seasonExportFilename(season), file });
     if (!sent) throw new Error("send failed");
+    await prisma.season.update({
+      where: { id: season.id },
+      data: { exportEmailedAt: new Date(), exportEmailClaimedAt: null },
+    });
     return true;
   } catch (error) {
     console.error(`[season-export] ${season.label} export email failed:`, error);
-    await prisma.season.update({ where: { id: season.id }, data: { exportEmailedAt: null } });
+    await prisma.season.update({ where: { id: season.id }, data: { exportEmailClaimedAt: null } });
     return false;
   }
 }

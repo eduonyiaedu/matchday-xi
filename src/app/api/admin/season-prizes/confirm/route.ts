@@ -1,7 +1,7 @@
 import { after, NextResponse } from "next/server";
 import { emailSeasonExportIfNeeded } from "@/lib/season-export";
 import { requireAdmin } from "@/lib/require-admin";
-import { confirmSeasonPrizes, SeasonNotOverError } from "@/lib/season-prizes";
+import { confirmSeasonPrizes, SeasonHasUnscoredFixturesError, SeasonNotOverError } from "@/lib/season-prizes";
 import { notifySeasonPrizesIfNeeded } from "@/lib/prize-notify";
 
 export const runtime = "nodejs";
@@ -25,7 +25,9 @@ export async function POST() {
     after(() => emailSeasonExportIfNeeded(result.season));
     return NextResponse.json({ season: result.season.label, created: result.created, winners: result.count, notified });
   } catch (error) {
-    if (error instanceof SeasonNotOverError) return NextResponse.json({ error: error.message }, { status: 409 });
+    if (error instanceof SeasonNotOverError || error instanceof SeasonHasUnscoredFixturesError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     throw error;
   }
 }

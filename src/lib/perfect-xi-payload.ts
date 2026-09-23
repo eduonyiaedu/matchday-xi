@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { perfectXiCountForPrediction } from "@/lib/seasons";
 
 export interface PerfectXiTakeoverPayload {
   matchLabel: string;
@@ -20,8 +21,7 @@ const POS_ABBREV: Record<string, string> = {
 /**
  * Builds the Perfect XI takeover's props from just a predictionId — shared by (app)/layout.tsx's
  * automatic trigger and anything else that needs to render the same celebration. `perfectXiCount`
- * is scoped to match whichever scope the prediction itself belongs to (global vs. a specific
- * private league), same as the two predict pages already compute it separately.
+ * is scoped to the prediction's own scope: that private league, or (global) that season.
  */
 export async function buildPerfectXiTakeoverPayload(predictionId: string): Promise<PerfectXiTakeoverPayload | null> {
   const prediction = await prisma.prediction.findUnique({
@@ -46,9 +46,7 @@ export async function buildPerfectXiTakeoverPayload(predictionId: string): Promi
     ? `${prediction.privateLeague.name} · Final`
     : `${prediction.fixture.competition.name} · Final`;
 
-  const perfectXiCount = await prisma.prediction.count({
-    where: { userId: prediction.userId, privateLeagueId: prediction.privateLeagueId, isPerfectXi: true },
-  });
+  const perfectXiCount = await perfectXiCountForPrediction(prediction);
 
   return {
     matchLabel,

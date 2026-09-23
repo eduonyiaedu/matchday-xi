@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Footer } from "@/components/layout/footer";
 import { LocalTime } from "@/components/ui/local-time";
 import { ConfirmSeasonPrizesButton } from "@/components/admin/confirm-season-prizes-button";
+import { EmailSeasonExportButton } from "@/components/admin/email-season-export-button";
 import { getPrizeSeason, provisionalPodium } from "@/lib/season-prizes";
 import { monthLabel, ordinal } from "@/lib/prize-notify";
 
@@ -141,16 +142,19 @@ export default async function AdminPrizesPage() {
                         Emailed to you <LocalTime iso={s.exportEmailedAt.toISOString()} dateOnly />
                       </>
                     ) : (
-                      "Not emailed yet — sent when this season's winners are confirmed"
+                      "Not emailed yet — sent automatically when this season's winners are confirmed"
                     )}
                   </p>
                 </div>
-                <a
-                  href={`/api/admin/season-export?season=${encodeURIComponent(s.label)}`}
-                  className="rounded-lg px-3 py-1.5 font-heading text-xs tracking-[0.1em] uppercase ring-1 ring-white/12 hover:bg-white/5"
-                >
-                  Download Excel
-                </a>
+                <div className="flex gap-2">
+                  <EmailSeasonExportButton season={s.label} />
+                  <a
+                    href={`/api/admin/season-export?season=${encodeURIComponent(s.label)}`}
+                    className="rounded-lg px-3 py-1.5 font-heading text-xs tracking-[0.1em] uppercase ring-1 ring-white/12 hover:bg-white/5"
+                  >
+                    Download Excel
+                  </a>
+                </div>
               </div>
             ))}
           </CardContent>

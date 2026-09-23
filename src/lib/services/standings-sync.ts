@@ -1,8 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { footballDataClient, COMPETITION_CODES } from "@/lib/football-data/client";
 import { upsertOpponentTeam } from "@/lib/services/fixture-sync";
-import { recomputeCurrentSeasonTotals, recordSeason, seasonLabel } from "@/lib/seasons";
-import { startNewSeason } from "@/lib/new-season";
+import { recordSeason, seasonLabel } from "@/lib/seasons";
+import { runSeasonRolloverIfNeeded } from "@/lib/new-season";
 
 /**
  * League table + season-long goals/assists leaderboard (rulebook §13). Deliberately does NOT
@@ -40,7 +40,7 @@ export async function syncStandingsAndScorers() {
   // Season dates ride along on the standings response. Kept on Competition for account deletion
   // (lib/account-deletion.ts), and every season is recorded in the Season table (never
   // overwritten) — the source for past-season leaderboards and prizes (lib/seasons.ts).
-  let newSeason: Record<string, unknown> | null = null;
+  let newSeason: Awaited<ReturnType<typeof runSeasonRolloverIfNeeded>> = null;
   if (season) {
     const start = new Date(season.startDate);
     const end = new Date(season.endDate);
@@ -48,15 +48,16 @@ export async function syncStandingsAndScorers() {
       where: { id: competition.id },
       data: { currentSeasonStartDate: start, currentSeasonEndDate: end },
     });
-    // A season seen for the first time is the rollover: the global leaderboard resets each season,
-    // so bring everyone's totals to the new season's (usually zero) straight away rather than
-    // waiting for the nightly self-check — then, if there was a season before it (not the very
-    // first one ever recorded), unlock everyone's club and ask returning players to keep or change it.
-    if (await recordSeason(competition.id, start, end)) {
-      const seasonTotalsReset = await recomputeCurrentSeasonTotals();
+    // Start-of-season work (the global leaderboard resets each season; club locks clear and
+    // returning players are asked to keep or change club) runs until it has succeeded once for
+    // this season — see runSeasonRolloverIfNeeded. Cheap no-op on every other run.
+    await recordSeason(competition.id, start, end);
+    const current = await prisma.season.findUniqueOrThrow({
+      where: { competitionId_label: { competitionId: competition.id, label: seasonLabel(start, end) } },
+    });
+    if (!current.rolloverDoneAt) {
       const seasonsKnown = await prisma.season.count({ where: { competitionId: competition.id } });
-      const clubs = seasonsKnown > 1 ? await startNewSeason({ label: seasonLabel(start, end), startDate: start }) : null;
-      newSeason = { seasonTotalsReset, ...(clubs ?? {}) };
+      newSeason = await runSeasonRolloverIfNeeded(current, { firstSeasonEver: seasonsKnown === 1 });
     }
   }
 
@@ -126,6 +127,6 @@ export async function syncStandingsAndScorers() {
   return {
     standingsSynced: standings.length,
     scorersSynced: scorers.length,
-    ...(newSeason ? { newSeasonRecorded: true, ...newSeason } : {}),
+    ...(newSeason ? { seasonRollover: newSeason } : {}),
   };
 }

@@ -46,6 +46,34 @@ export async function getCurrentSeason(now = new Date()): Promise<SeasonInfo | n
   return (await listSeasons(now))[0] ?? null;
 }
 
+/** The recorded season a kickoff falls in (its last day included), or null. */
+export async function seasonForKickoff(kickoffAt: Date): Promise<SeasonInfo | null> {
+  const seasons = await listSeasons();
+  return (
+    seasons.find((s) => kickoffAt >= s.startDate && kickoffAt.getTime() < s.endDate.getTime() + DAY_MS) ?? null
+  );
+}
+
+/**
+ * The Perfect XI count shown alongside one prediction (the celebration takeover, the share card):
+ * a private-league prediction counts that league's Perfect XIs; a global one counts that
+ * prediction's own season, matching the leaderboard's tiers, which reset each season. Reading
+ * User.perfectXiCount instead would show the *current* season's count on an old season's card.
+ */
+export async function perfectXiCountForPrediction(p: {
+  userId: string;
+  privateLeagueId: string | null;
+  fixture: { kickoffAt: Date };
+}): Promise<number> {
+  if (p.privateLeagueId) {
+    return prisma.prediction.count({ where: { userId: p.userId, privateLeagueId: p.privateLeagueId, isPerfectXi: true } });
+  }
+  const season = await seasonForKickoff(p.fixture.kickoffAt);
+  return prisma.prediction.count({
+    where: { userId: p.userId, isPerfectXi: true, ...(season ? seasonPredictionFilter(season) : { privateLeagueId: null }) },
+  });
+}
+
 /** Records a season seen by the standings sync (idempotent). Returns whether it was new. */
 export async function recordSeason(competitionId: string, startDate: Date, endDate: Date): Promise<boolean> {
   const label = seasonLabel(startDate, endDate);

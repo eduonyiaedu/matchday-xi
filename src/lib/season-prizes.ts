@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/prisma";
+import type { FixtureStatus } from "@/generated/prisma/client";
+import { REAL_FIXTURES_ONLY } from "@/lib/real-fixture";
 import { listSeasons, seasonPredictionFilter, seasonStandings, type SeasonInfo } from "@/lib/seasons";
 
 export const PRIZE_PLACES = 3;
@@ -55,9 +57,43 @@ export class SeasonNotOverError extends Error {
   }
 }
 
+export class SeasonHasUnscoredFixturesError extends Error {
+  constructor(matches: string[], total: number) {
+    super(
+      `${total} match${total === 1 ? " is" : "es are"} still waiting to be scored (${matches.join("; ")}${total > matches.length ? "; …" : ""}). ` +
+        "Enter their lineups in Admin → Lineups (or void them) first — winners can't change once confirmed.",
+    );
+    this.name = "SeasonHasUnscoredFixturesError";
+  }
+}
+
+/** Real fixtures in the season still waiting on a lineup/score (postponed/abandoned ones never score). */
+export async function unscoredSeasonFixtures(season: SeasonInfo) {
+  const where = {
+    ...REAL_FIXTURES_ONLY,
+    kickoffAt: { gte: season.startDate, lt: new Date(season.endDate.getTime() + 24 * 60 * 60 * 1000) },
+    status: { in: ["SCHEDULED", "LOCKED", "LINEUPS_FETCHED", "NEEDS_MANUAL_REVIEW"] as FixtureStatus[] },
+  };
+  const [total, sample] = await Promise.all([
+    prisma.fixture.count({ where }),
+    prisma.fixture.findMany({
+      where,
+      orderBy: { kickoffAt: "asc" },
+      take: 5,
+      select: { kickoffAt: true, homeTeam: { select: { name: true } }, awayTeam: { select: { name: true } } },
+    }),
+  ]);
+  return {
+    total,
+    matches: sample.map((f) => `${f.homeTeam.name} vs ${f.awayTeam.name}, ${f.kickoffAt.toISOString().slice(0, 10)}`),
+  };
+}
+
 /**
  * Locks in the season's 1st/2nd/3rd, founder-confirmed from /admin/prizes. Refuses before the
- * season's last day has passed. Idempotent and race-safe: an advisory lock serializes concurrent
+ * season's last day has passed, and while any of its matches is still unscored (a final-day
+ * lineup that failed to fetch would otherwise be left out of a podium that can never be revised).
+ * Idempotent and race-safe: an advisory lock serializes concurrent
  * confirmations (a double-click, two tabs), and a season that's already confirmed just returns its
  * existing placings — so the podium is computed and written exactly once.
  */
@@ -65,6 +101,8 @@ export async function confirmSeasonPrizes(now = new Date()) {
   const season = await getPrizeSeason(now);
   if (!season) throw new Error("The current season's dates aren't known yet — the standings sync records them.");
   if (!season.ended) throw new SeasonNotOverError(season.endDate);
+  const unscored = await unscoredSeasonFixtures(season);
+  if (unscored.total > 0) throw new SeasonHasUnscoredFixturesError(unscored.matches, unscored.total);
 
   const result = await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`season-prizes:${season.competitionId}:${season.label}`}))`;

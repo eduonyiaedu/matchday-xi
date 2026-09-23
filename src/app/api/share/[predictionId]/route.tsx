@@ -4,6 +4,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getTeamColors } from "@/lib/team-colors";
 import { tierFromPerfectXiCount } from "@/components/leaderboard/tier-disc";
+import { perfectXiCountForPrediction } from "@/lib/seasons";
 import { FORMATION_LAYOUTS, type Formation } from "@/lib/formations";
 import { loadOgFonts } from "@/lib/og-fonts";
 
@@ -14,7 +15,7 @@ const MUTED = "#8A9A90";
 const GOLD = "#F0B429";
 
 const PREDICTION_INCLUDE = {
-  user: { select: { displayName: true, username: true, perfectXiCount: true } },
+  user: { select: { displayName: true, username: true } },
   team: { select: { name: true, shortName: true, externalId: true } },
   fixture: {
     include: { homeTeam: { select: { name: true, shortName: true } }, awayTeam: { select: { name: true, shortName: true } } },
@@ -59,11 +60,14 @@ export async function GET(
   const slotByIndex = new Map(prediction.slots.map((s) => [s.slotIndex, s]));
 
   const scored = prediction.pointsAwarded !== null;
-  const fonts = await loadOgFonts();
+  const [fonts, perfectXiCount] = await Promise.all([
+    loadOgFonts(),
+    scored ? perfectXiCountForPrediction(prediction) : Promise.resolve(0),
+  ]);
 
   return new ImageResponse(
     scored
-      ? resultCard({ prediction, colors, layout, slotByIndex, format })
+      ? resultCard({ prediction, perfectXiCount, colors, layout, slotByIndex, format })
       : predictedLineupCard({ prediction, colors, layout, slotByIndex, format }),
     { width, height, fonts },
   );
@@ -523,18 +527,21 @@ function surname(name: string | undefined) {
 
 function resultCard({
   prediction,
+  perfectXiCount,
   colors,
   layout,
   slotByIndex,
   format,
 }: {
   prediction: PredictionWithRelations;
+  /** For the prediction's own season (or league) — not User.perfectXiCount, the current season's. */
+  perfectXiCount: number;
   colors: { primary: string; secondary: string };
   layout: { slotIndex: number; top: string; left: string }[];
   slotByIndex: SlotMap;
   format: "square" | "story";
 }) {
-  const tier = tierFromPerfectXiCount(prediction.user.perfectXiCount);
+  const tier = tierFromPerfectXiCount(perfectXiCount);
   const tierGradient =
     tier === "gold"
       ? "linear-gradient(145deg,#FFF0BE,#F7C63C 55%,#D99A12)"
@@ -586,7 +593,7 @@ function resultCard({
     <div key="tier" style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 40 }}>
       <div style={{ width: 30, height: 30, borderRadius: 999, display: "flex", background: tierGradient }} />
       <span style={{ fontSize: 22, letterSpacing: 2, color: MUTED }}>
-        {(tier ?? "no tier").toUpperCase()} · {prediction.user.perfectXiCount} PERFECT XI
+        {(tier ?? "no tier").toUpperCase()} · {perfectXiCount} PERFECT XI
       </span>
     </div>,
 
