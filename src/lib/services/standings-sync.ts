@@ -38,9 +38,19 @@ export async function syncStandingsAndScorers() {
   // Season dates ride along on the standings response — kept current so account deletion can tell
   // whether a private-league creator's season is still running (lib/account-deletion.ts).
   if (season) {
+    // On rollover to a new season, keep the outgoing season's dates rather than overwrite them —
+    // its prizes may not have been confirmed yet (lib/season-prizes.ts).
+    const rolledOver =
+      competition.currentSeasonStartDate && competition.currentSeasonStartDate.toISOString().slice(0, 10) !== season.startDate;
     await prisma.competition.update({
       where: { id: competition.id },
-      data: { currentSeasonStartDate: new Date(season.startDate), currentSeasonEndDate: new Date(season.endDate) },
+      data: {
+        currentSeasonStartDate: new Date(season.startDate),
+        currentSeasonEndDate: new Date(season.endDate),
+        ...(rolledOver
+          ? { previousSeasonStartDate: competition.currentSeasonStartDate, previousSeasonEndDate: competition.currentSeasonEndDate }
+          : {}),
+      },
     });
   }
 

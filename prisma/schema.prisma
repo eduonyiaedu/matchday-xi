@@ -203,6 +203,11 @@ model Competition {
   /// creator from deleting their account mid-season (see lib/account-deletion.ts).
   currentSeasonStartDate DateTime? @db.Date
   currentSeasonEndDate   DateTime? @db.Date
+  /// The season before the current one, kept when the standings sync sees football-data.org roll
+  /// over to a new season — so a season whose prizes weren't confirmed before the rollover can
+  /// still be confirmed afterwards (see lib/season-prizes.ts).
+  previousSeasonStartDate DateTime? @db.Date
+  previousSeasonEndDate   DateTime? @db.Date
 
   fixtures            Fixture[]
   seasonPrizes        SeasonPrize[]

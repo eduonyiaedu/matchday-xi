@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getCurrentUser } from "@/lib/auth";
+import { getOrCreateCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getTeamColors } from "@/lib/team-colors";
 import { recordDailyLoginIfNeeded } from "@/lib/streaks";
@@ -9,7 +9,11 @@ import { AppNav } from "@/components/layout/app-nav";
 import { Footer } from "@/components/layout/footer";
 
 export default async function PublicLayout({ children }: { children: React.ReactNode }) {
-  const user = await getCurrentUser();
+  // getOrCreateCurrentUser, not getCurrentUser: it's the one with the app's account rules — an
+  // anonymized (purged) account counts as signed out, and a signed-in visit cancels a pending
+  // deletion exactly as everywhere else in the app — so this shell can't show a "Deleted user"
+  // or record logins the rest of the app would refuse. Cached per request.
+  const user = await getOrCreateCurrentUser();
 
   // Signed-in users get the normal app shell here too. The leaderboard is public (so logged-out
   // visitors can see it) but it's also the "Ranks" tab in the app's bottom bar — without this,

@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Footer } from "@/components/layout/footer";
 import { LocalTime } from "@/components/ui/local-time";
 import { ConfirmSeasonPrizesButton } from "@/components/admin/confirm-season-prizes-button";
-import { getCurrentSeason, provisionalPodium } from "@/lib/season-prizes";
+import { getPrizeSeason, provisionalPodium } from "@/lib/season-prizes";
 import { monthLabel, ordinal } from "@/lib/prize-notify";
 
 function calendarDay(d: Date) {
@@ -27,7 +27,7 @@ export default async function AdminPrizesPage() {
       orderBy: { month: "desc" },
       include: { winner: { select: { displayName: true, username: true, email: true } } },
     }),
-    getCurrentSeason(),
+    getPrizeSeason(),
   ]);
   const confirmed = season
     ? await prisma.seasonPrize.findMany({
@@ -36,7 +36,7 @@ export default async function AdminPrizesPage() {
         include: { user: { select: { displayName: true, username: true, email: true } } },
       })
     : [];
-  const provisional = season && confirmed.length === 0 ? await provisionalPodium() : [];
+  const provisional = season && confirmed.length === 0 ? await provisionalPodium(season) : [];
 
   return (
     <div className="flex min-h-svh flex-col">
@@ -91,7 +91,8 @@ export default async function AdminPrizesPage() {
                   {season.ended
                     ? "The season is over. Check the top 3 below, then confirm to lock them in and announce them."
                     : `Live standings — these can change until the season ends on ${calendarDay(season.endDate)}. You can confirm the winners from the next day.`}{" "}
-                  Duplicate-flagged and deleted accounts are left out automatically.
+                  Ranked on points scored in this season only. Duplicate-flagged and deleted
+                  accounts are left out automatically.
                 </p>
                 {provisional.length === 0 && <p className="text-muted-foreground">Nobody has scored any points yet.</p>}
                 {provisional.map((u, i) => (

@@ -169,6 +169,17 @@ transaction even reads. Three fix patterns are established here, depending on wh
 
 ## Other gotchas worth knowing before you hit them yourself
 
+- **Anything scoped to one season (prizes, season rankings) must be computed from that season's own
+  match data — never from running totals that never reset.** `User.totalPoints` /
+  `perfectXiCount` accumulate forever (only scoring increments and voids decrement them), so a
+  season podium ranked on them would carry one season's points into the next. Confirmed by review
+  2026-09-23: `lib/season-prizes.ts` now sums `pointsAwarded` of global predictions for real
+  fixtures kicking off within the season's dates. Relatedly, season dates come from the standings
+  sync, which overwrites them every run — on rollover it now keeps the outgoing season in
+  `Competition.previousSeason*` so that season's prizes can still be confirmed. Note the global
+  leaderboard itself still shows all-time points; whether it should reset per season is an open
+  founder decision (flagged 2026-09-23, needed before the 2027-28 season).
+
 - **A sync window that starts at "today" silently loses anything that finishes after its last
   run.** `fixture-sync.ts` asked football-data.org only for matches from today onward, so a match
   whose final whistle came after the day's last (drifting, 6-hourly) sync run never got its final

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import crypto from "node:crypto";
 import { notifyMonthlyDrawIfNeeded } from "@/lib/prize-notify";
+import { REAL_FIXTURES_ONLY } from "@/lib/real-fixture";
 
 function monthKey(year: number, monthIndex0: number): string {
   return `${year}-${String(monthIndex0 + 1).padStart(2, "0")}`;
@@ -33,6 +34,7 @@ export async function computeLiveMonthlyProgress(userId: string, favoriteTeamId:
 
   const teamFixturesSoFar = await prisma.fixture.findMany({
     where: {
+      ...REAL_FIXTURES_ONLY,
       kickoffAt: { gte: start, lte: now },
       status: { not: "VOIDED" },
       OR: [{ homeTeamId: favoriteTeamId }, { awayTeamId: favoriteTeamId }],
@@ -68,7 +70,9 @@ export async function computeMonthlyEligibility(monthKeyStr: string) {
     prisma.user.findMany({ where: { favoriteTeamId: { not: null } }, select: { id: true, favoriteTeamId: true } }),
     prisma.dailyLoginLog.groupBy({ by: ["userId"], where: { loginDate: { gte: start, lt: end } }, _count: { _all: true } }),
     prisma.fixture.findMany({
-      where: { kickoffAt: { gte: start, lt: end }, status: { not: "VOIDED" } },
+      // REAL_FIXTURES_ONLY: a leftover test fixture between two real clubs would otherwise make
+      // every fan of both clubs ineligible (nobody real predicted it).
+      where: { ...REAL_FIXTURES_ONLY, kickoffAt: { gte: start, lt: end }, status: { not: "VOIDED" } },
       select: { id: true, homeTeamId: true, awayTeamId: true },
     }),
   ]);

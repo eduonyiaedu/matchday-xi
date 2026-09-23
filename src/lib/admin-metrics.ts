@@ -553,15 +553,32 @@ async function matchdaySection(range: DateRange): Promise<MetricSection> {
     orderBy: { kickoffAt: "desc" },
   });
   const [fans, predictions] = await Promise.all([
-    prisma.user.findMany({ where: LIVE_PLAYERS, select: { favoriteTeamId: true, createdAt: true } }),
+    prisma.user.findMany({ where: LIVE_PLAYERS, select: { id: true, favoriteTeamId: true, createdAt: true } }),
     prisma.prediction.findMany({
       where: { privateLeagueId: null, fixtureId: { in: fixtures.map((f) => f.id) } },
-      select: { fixtureId: true, teamId: true, pointsAwarded: true, isPerfectXi: true },
+      select: { fixtureId: true, teamId: true, userId: true, pointsAwarded: true, isPerfectXi: true },
     }),
   ]);
 
+  // Indexed once, rather than re-filtering every fan and prediction for each fixture.
+  const fansByTeam = new Map<string, { id: string; createdAt: Date }[]>();
+  for (const u of fans) {
+    const list = fansByTeam.get(u.favoriteTeamId!) ?? [];
+    list.push(u);
+    fansByTeam.set(u.favoriteTeamId!, list);
+  }
+  const predictorsBySide = new Map<string, Set<string>>();
+  for (const p of predictions) {
+    const key = `${p.fixtureId}|${p.teamId}`;
+    const set = predictorsBySide.get(key) ?? new Set<string>();
+    set.add(p.userId);
+    predictorsBySide.set(key, set);
+  }
+
   // One row per (fixture, side): that club's fans who had already signed up before lock, and how
-  // many of them predicted.
+  // many OF THOSE SAME FANS predicted. The numerator must come from the denominator's own set — it
+  // used to count every prediction for the side, including deleted accounts and anyone who has
+  // since switched club, which could push participation over 100%.
   let eligibleTotal = 0;
   let predictedTotal = 0;
   const rows: (string | number)[][] = [];
@@ -570,9 +587,11 @@ async function matchdaySection(range: DateRange): Promise<MetricSection> {
       { teamId: f.homeTeamId, team: f.homeTeam, opponent: f.awayTeam },
       { teamId: f.awayTeamId, team: f.awayTeam, opponent: f.homeTeam },
     ]) {
-      const eligible = fans.filter((u) => u.favoriteTeamId === side.teamId && u.createdAt < f.lockAt).length;
+      const eligibleFans = (fansByTeam.get(side.teamId) ?? []).filter((u) => u.createdAt < f.lockAt);
+      const eligible = eligibleFans.length;
       if (eligible === 0) continue;
-      const predicted = predictions.filter((p) => p.fixtureId === f.id && p.teamId === side.teamId).length;
+      const predictors = predictorsBySide.get(`${f.id}|${side.teamId}`) ?? new Set<string>();
+      const predicted = eligibleFans.filter((u) => predictors.has(u.id)).length;
       eligibleTotal += eligible;
       predictedTotal += predicted;
       rows.push([

@@ -4,6 +4,8 @@ import { withJobRun } from "@/lib/job-run";
 import { runMonthlyPrizeRollupIfDue } from "@/lib/prizes";
 
 export const runtime = "nodejs";
+// Eligibility + draw + winner announcement in one call — explicit, matching the other cron routes.
+export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
   const unauthorized = verifyCronSecret(request);
