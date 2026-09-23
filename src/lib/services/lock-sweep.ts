@@ -59,7 +59,7 @@ async function sendLockNudges(): Promise<number> {
           scopeKey: scopeKeyFor(null),
           userId: { in: favoriteUsers.map((u) => u.id) },
         },
-        select: { userId: true, lineupSignature: true },
+        select: { userId: true, teamId: true, lineupSignature: true },
       });
       const predictedIds = new Set(predictions.map((p) => p.userId));
       const notSubmitted = favoriteUsers.map((u) => u.id).filter((id) => !predictedIds.has(id));

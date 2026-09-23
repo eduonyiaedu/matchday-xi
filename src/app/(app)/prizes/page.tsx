@@ -1,6 +1,7 @@
 import { getOrCreateCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { computeLiveMonthlyProgress } from "@/lib/prizes";
+import { recordDailyLoginIfNeeded } from "@/lib/streaks";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ComingSoonCard } from "@/components/prizes/coming-soon-card";
@@ -9,6 +10,13 @@ import { RanksTabs } from "@/components/leaderboard/ranks-tabs";
 export default async function PrizesPage() {
   const user = await getOrCreateCurrentUser();
   if (!user) return null;
+
+  // On the first request of a new UTC day, `user` (cached for this request) still holds
+  // yesterday's streak — same staleness the nav badge had. recordDailyLoginIfNeeded returns the
+  // up-to-date value, and repeating the layout's own call within one request is harmless: both
+  // work from the same snapshot and write the same values.
+  const currentStreak = await recordDailyLoginIfNeeded(user);
+  const longestStreak = Math.max(user.longestStreak, currentStreak);
 
   const progress = user.favoriteTeamId
     ? await computeLiveMonthlyProgress(user.id, user.favoriteTeamId)
@@ -35,8 +43,8 @@ export default async function PrizesPage() {
           <CardDescription>Log in every day this month to stay eligible for the draw.</CardDescription>
         </CardHeader>
         <CardContent className="flex gap-4">
-          <Badge className="text-base">🔥 {user.currentStreak} day streak</Badge>
-          <Badge variant="secondary">Best: {user.longestStreak}</Badge>
+          <Badge className="text-base">🔥 {currentStreak} day streak</Badge>
+          <Badge variant="secondary">Best: {longestStreak}</Badge>
         </CardContent>
       </Card>
 

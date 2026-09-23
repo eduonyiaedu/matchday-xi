@@ -134,17 +134,28 @@ export async function performMonthlyDraw(monthKeyStr: string) {
   });
 }
 
+// How long into a new month a missed draw for the month before is still retried.
+const DRAW_CATCH_UP_DAYS = 7;
+
 /**
- * Runs daily; only does real work on the 1st of a month, computing eligibility + drawing a
- * winner for the month that just ended. Cheap no-op on every other day, and safe to re-run
- * (performMonthlyDraw short-circuits once a month is already drawn).
+ * Runs daily; computes eligibility + draws a winner for the month that just ended. Normally does
+ * its work on the 1st, but it keeps retrying daily through the first week until that month's draw
+ * has actually completed — it used to act ONLY on the 1st, so one failed call that day (a DB blip,
+ * a timeout, a missed cron trigger) meant that month's prize was simply never drawn. The catch-up
+ * is capped at the first week so it can't reach back to a month from before the app existed.
+ * Safe to re-run (performMonthlyDraw short-circuits once a month is already drawn).
  */
 export async function runMonthlyPrizeRollupIfDue() {
   const now = new Date();
-  if (now.getUTCDate() !== 1) return { ran: false, reason: "not the 1st of the month (UTC)" };
+  if (now.getUTCDate() > DRAW_CATCH_UP_DAYS) {
+    return { ran: false, reason: `past day ${DRAW_CATCH_UP_DAYS} of the month (UTC)` };
+  }
 
   const prevMonthDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
   const key = monthKey(prevMonthDate.getUTCFullYear(), prevMonthDate.getUTCMonth());
+
+  const existingDraw = await prisma.monthlyPrizeDraw.findUnique({ where: { month: key }, select: { drawnAt: true } });
+  if (existingDraw?.drawnAt) return { ran: false, reason: `${key} already drawn` };
 
   const eligibility = await computeMonthlyEligibility(key);
   const draw = await performMonthlyDraw(key);

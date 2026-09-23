@@ -35,7 +35,12 @@ export async function sendPushToUsers(userIds: string[], payload: PushPayload): 
     return true;
   }
 
-  const subscriptions = await prisma.pushSubscription.findMany({ where: { userId: { in: userIds } } });
+  // Nobody who has asked to delete their account gets pushes during the 30-day grace period. The
+  // subscriptions themselves are kept (not deleted) so logging back in to cancel restores them
+  // without re-subscribing; PURGE_EXPIRED_ACCOUNTS deletes them for good if the deletion goes ahead.
+  const subscriptions = await prisma.pushSubscription.findMany({
+    where: { userId: { in: userIds }, user: { deletionScheduledAt: null } },
+  });
   const body = JSON.stringify(payload);
 
   let hadRealFailure = false;

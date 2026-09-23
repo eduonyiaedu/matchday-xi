@@ -19,6 +19,9 @@ export default async function FixturesHistoryPage() {
         where: {
           status: { in: ["SCORED", "VOIDED"] },
           OR: [{ homeTeamId: user.favoriteTeamId }, { awayTeamId: user.favoriteTeamId }],
+          // Only fixtures they could actually have predicted — one that locked before they
+          // signed up isn't a "Missed" prediction, it's from before they were here.
+          lockAt: { gt: user.createdAt },
         },
         include: { homeTeam: true, awayTeam: true, competition: true },
         orderBy: { kickoffAt: "desc" },

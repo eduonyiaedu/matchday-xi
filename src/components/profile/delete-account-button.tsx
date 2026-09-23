@@ -30,8 +30,20 @@ export function DeleteAccountButton() {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error ?? "Couldn't delete your account.");
       }
+      // The server already signed this session out; this clears any client-side copy too. If it
+      // still reports a failure, say so plainly rather than redirecting as if all went well —
+      // staying signed in and opening the app again would cancel the deletion.
       const supabase = createClient();
-      await supabase.auth.signOut();
+      const { error: signOutError } = await supabase.auth.signOut();
+      if (signOutError) {
+        toast.error(
+          "Your account is scheduled for deletion, but we couldn't sign you out on this device. Please log out from the menu — opening the app while signed in cancels the deletion.",
+          { duration: 15_000 },
+        );
+        setLoading(false);
+        setOpen(false);
+        return;
+      }
       toast.success("Your account is scheduled for deletion in 30 days.");
       router.push("/login");
       router.refresh();

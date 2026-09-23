@@ -50,7 +50,7 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
     [fixtures, leaderboardRows, history] = await Promise.all([
       getEligibleFixtures(myMembership.teamId, league),
       getLeagueLeaderboardRows(league.id),
-      getLeagueHistory(league.id, user.id, myMembership.teamId, league),
+      getLeagueHistory(league.id, user.id, myMembership.teamId, league, myMembership.respondedAt ?? myMembership.requestedAt),
     ]);
     const next = await getNextEligibleFixture(myMembership.teamId);
     nextFixtureId = next?.id ?? null;
@@ -228,6 +228,7 @@ async function getLeagueHistory(
   userId: string,
   teamId: string,
   league: { startDate: Date; endDate: Date },
+  joinedAt: Date,
 ) {
   // Fixture-driven (was Prediction-driven) — same fix as fixtures/history/page.tsx: a scored
   // fixture the user never predicted for used to be silently skipped instead of showing as missed.
@@ -236,6 +237,9 @@ async function getLeagueHistory(
       status: { in: ["SCORED", "VOIDED"] },
       OR: [{ homeTeamId: teamId }, { awayTeamId: teamId }],
       kickoffAt: { gte: league.startDate, lt: leagueWindowEndExclusive(league.endDate) },
+      // Only fixtures they could have predicted in this league — not ones that locked before
+      // their membership was approved.
+      lockAt: { gt: joinedAt },
     },
     include: { homeTeam: true, awayTeam: true },
     orderBy: { kickoffAt: "desc" },

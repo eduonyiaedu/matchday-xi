@@ -47,17 +47,19 @@ export default async function LeaguePredictPage({
     windowNotYetOpen = !isPredictionWindowOpen(fixture);
   }
 
-  const [squadRaw, formMap, existing] = await Promise.all([
+  const existing = await prisma.prediction.findUnique({
+    where: { userId_fixtureId_scopeKey: { userId: user.id, fixtureId, scopeKey: scopeKeyFor(leagueId) } },
+    include: { slots: true },
+  });
+  // Same as the global predict page: once locked, include saved picks even if since deactivated.
+  const savedPlayerIds = locked ? (existing?.slots.map((s) => s.squadPlayerId) ?? []) : [];
+  const [squadRaw, formMap] = await Promise.all([
     prisma.squadPlayer.findMany({
-      where: { teamId, isActive: true },
+      where: { teamId, OR: [{ isActive: true }, { id: { in: savedPlayerIds } }] },
       orderBy: { name: "asc" },
       select: { id: true, name: true, position: true, shirtNumber: true, squadTier: true, photoUrl: true },
     }),
     getRecentForm(teamId),
-    prisma.prediction.findUnique({
-      where: { userId_fixtureId_scopeKey: { userId: user.id, fixtureId, scopeKey: scopeKeyFor(leagueId) } },
-      include: { slots: true },
-    }),
   ]);
   const squad = squadRaw.map((p) => ({ ...p, form: formFor(formMap, p.id, 5) }));
 

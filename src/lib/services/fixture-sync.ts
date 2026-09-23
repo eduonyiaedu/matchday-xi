@@ -11,6 +11,13 @@ import { voidFixtureAndReversePoints } from "@/lib/services/void-fixture";
 // breaks and cup rounds can leave a 3+ week gap between a club's league fixtures, so a shorter
 // window sometimes surfaced only 3-4. 90 days comfortably covers that in practice.
 const SYNC_WINDOW_DAYS = 90;
+// The window also reaches back this far, so a match that finished after the last sync run of its
+// own day still gets its final score (and any late postponement/void) picked up. Starting the
+// window at "today" silently lost those for good: confirmed 2026-09-23, Brentford vs Chelsea
+// (Fri 19:00 UTC) sat SCORED with no final score because the drifting 6-hourly schedule's last
+// run that day came before full time, and the next day's window no longer included it. Still one
+// request either way; confirmed live that football-data.org's free tier accepts the longer range.
+const SYNC_LOOKBACK_DAYS = 7;
 // football-data.org's free tier is 10 requests/minute. Squads rarely change (only during
 // transfer windows), so instead of resyncing all 20 clubs' squads every run — which would burst
 // well past the rate limit and take minutes even with the client's own throttling — each run
@@ -138,7 +145,7 @@ export async function upsertOpponentTeam(team: FootballDataMatch["homeTeam"], cl
 async function syncFixturesForCompetition(code: string) {
   const competition = await prisma.competition.findUniqueOrThrow({ where: { externalId: code } });
   const now = new Date();
-  const dateFrom = now.toISOString().slice(0, 10);
+  const dateFrom = new Date(now.getTime() - SYNC_LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const dateTo = new Date(now.getTime() + SYNC_WINDOW_DAYS * 24 * 60 * 60 * 1000)
     .toISOString()
     .slice(0, 10);
@@ -154,6 +161,11 @@ async function syncFixturesForCompetition(code: string) {
     const kickoffAt = new Date(match.utcDate);
     const lockAt = new Date(kickoffAt.getTime() - 2 * 60 * 60 * 1000);
     const isVoidedUpstream = VOIDED_UPSTREAM_STATUSES.has(match.status);
+
+    // The lookback exists only to finish off fixtures we already track. Never create one whose
+    // kickoff has passed — it'd start life SCHEDULED, get locked, and send the lineup job after
+    // a match that's already over (API-Football calls, a "lineup fetch failed" alert).
+    if (!existing && kickoffAt < now) continue;
 
     // football-data.org's `score.fullTime` is live, not "final" — it reflects the current
     // cumulative score from kickoff onward (e.g. 0-0 moments into the match), not just the result

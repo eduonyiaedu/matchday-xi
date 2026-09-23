@@ -39,17 +39,21 @@ export default async function PredictPage({
     windowNotYetOpen = !isPredictionWindowOpen(fixture);
   }
 
-  const [squadRaw, formMap, existing] = await Promise.all([
+  const existing = await prisma.prediction.findUnique({
+    where: { userId_fixtureId_scopeKey: { userId: user.id, fixtureId, scopeKey: GLOBAL_SCOPE } },
+    include: { slots: true },
+  });
+  // Once locked, the saved picks are history: include them even if a squad sync has since marked
+  // them inactive (a transfer, a released player), or the pitch shows an empty "Pick" shirt in
+  // their slot. Before lock the list stays active-only, so a departed player can't be picked.
+  const savedPlayerIds = locked ? (existing?.slots.map((s) => s.squadPlayerId) ?? []) : [];
+  const [squadRaw, formMap] = await Promise.all([
     prisma.squadPlayer.findMany({
-      where: { teamId: user.favoriteTeamId, isActive: true },
+      where: { teamId: user.favoriteTeamId, OR: [{ isActive: true }, { id: { in: savedPlayerIds } }] },
       orderBy: { name: "asc" },
       select: { id: true, name: true, position: true, shirtNumber: true, squadTier: true, photoUrl: true },
     }),
     getRecentForm(user.favoriteTeamId),
-    prisma.prediction.findUnique({
-      where: { userId_fixtureId_scopeKey: { userId: user.id, fixtureId, scopeKey: GLOBAL_SCOPE } },
-      include: { slots: true },
-    }),
   ]);
   const squad = squadRaw.map((p) => ({ ...p, form: formFor(formMap, p.id, 5) }));
 

@@ -162,6 +162,23 @@ transaction even reads. Three fix patterns are established here, depending on wh
 
 ## Other gotchas worth knowing before you hit them yourself
 
+- **A sync window that starts at "today" silently loses anything that finishes after its last
+  run.** `fixture-sync.ts` asked football-data.org only for matches from today onward, so a match
+  whose final whistle came after the day's last (drifting, 6-hourly) sync run never got its final
+  score — confirmed real 2026-09-23 (Brentford vs Chelsea sat SCORED with no score). It now looks
+  back `SYNC_LOOKBACK_DAYS` (7), and never *creates* a fixture whose kickoff has passed (that
+  would start life SCHEDULED and send the lineup job after a finished match). Any new sync against
+  an external source should likewise reach back a few days, not start at "now".
+- **When anonymizing a deleted user, check every channel that still reaches them through a field
+  you deliberately kept.** The purge keeps `favoriteTeamId` (so points stay on leaderboards), but
+  the matchday/lock/notify jobs pick push recipients by `favoriteTeamId` — so a "deleted" user kept
+  getting pushes until the purge also deleted their `PushSubscription` rows (confirmed by review,
+  2026-09-23). `push.ts` also skips anyone with `deletionScheduledAt` set during the 30-day grace
+  period. If a new outbound channel (email digests, etc.) is added, it needs the same treatment.
+- **Supabase's `auth.admin.generateLink({ type: "magiclink" })` for an email with no login
+  silently CREATES one** — so it can't be used to prove a login was deleted (it will "succeed" and
+  leave a new stray auth user behind). Check deletion with `auth.admin.getUserById(id)` instead.
+
 - A long-running `next dev` process does **not** pick up a regenerated Prisma client after
   `prisma db push` + `generate` — it needs a hard restart, or every query referencing a new
   field/model throws a validation error that looks like a real bug but isn't.

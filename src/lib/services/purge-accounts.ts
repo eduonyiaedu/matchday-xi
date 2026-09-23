@@ -29,30 +29,50 @@ export async function purgeExpiredAccounts() {
 
   const failed: { userId: string; error: string }[] = [];
   let purged = 0;
+  // No longer due by the time we got to it: cancelled by logging back in, or already handled by
+  // an overlapping run.
+  let skipped = 0;
 
   for (const { id } of expired) {
     try {
+      // Claim-and-anonymize in one conditional write, re-checking the deletion is STILL due at the
+      // moment of acting — the `expired` list above was read once at the start, and logging back
+      // in (lib/auth.ts) cancels a deletion by clearing deletionScheduledAt. Without this re-check,
+      // someone who logged back in while this loop was working through earlier accounts would
+      // still have their login deleted and their name wiped. deletionScheduledAt is deliberately
+      // left set here and only cleared once the auth login is really gone (below), so a run that
+      // fails between the two steps simply retries next time — the anonymize is idempotent.
+      const claimed = await prisma.$transaction(async (tx) => {
+        const { count } = await tx.user.updateMany({
+          where: { id, deletionScheduledAt: { lte: now } },
+          data: {
+            email: `deleted-${id}@deleted.matchday-xi.app`,
+            // Full id, not a truncated slice — username is @unique, and a truncated 8-hex-char
+            // slice has a real (if rare) collision risk between two different users' ids, which
+            // would then fail identically on every retry, forever.
+            username: `deleted-${id}`,
+            displayName: "Deleted user",
+          },
+        });
+        if (count === 0) return false;
+        // Anonymizing the row doesn't stop pushes on its own: the matchday/lock jobs pick
+        // recipients by favoriteTeamId (kept, so their points stay on the leaderboards), and
+        // push.ts then sends to every subscription of those users.
+        await tx.pushSubscription.deleteMany({ where: { userId: id } });
+        return true;
+      });
+      if (!claimed) {
+        skipped++;
+        continue;
+      }
+
       const { error } = await admin.auth.admin.deleteUser(id);
-      // A retry after a prior run's Prisma anonymize step failed but the auth deletion already
-      // succeeded would otherwise fail here forever — "already gone" is success, same reasoning
-      // as push.ts treating an expired subscription's 404/410 as handled, not a real failure.
+      // "Already gone" is success — a retry after a prior run deleted the login but failed before
+      // the final write below, same reasoning as push.ts treating an expired subscription's
+      // 404/410 as handled, not a real failure.
       if (error && error.status !== 404) throw new Error(error.message);
 
-      await prisma.user.update({
-        where: { id },
-        data: {
-          email: `deleted-${id}@deleted.matchday-xi.app`,
-          // Full id, not a truncated slice — username is @unique, and a truncated 8-hex-char
-          // slice has a real (if rare) collision risk between two different users' ids. A
-          // collision here wouldn't just fail once: the auth-delete above would have already
-          // succeeded, so a retry short-circuits past it (line 39) and hits the exact same
-          // username collision again on every subsequent run, forever, since nothing about the
-          // colliding value ever changes between retries.
-          username: `deleted-${id}`,
-          displayName: "Deleted user",
-          deletionScheduledAt: null,
-        },
-      });
+      await prisma.user.update({ where: { id }, data: { deletionScheduledAt: null } });
       purged++;
     } catch (error) {
       failed.push({ userId: id, error: error instanceof Error ? error.message : String(error) });
@@ -65,5 +85,5 @@ export async function purgeExpiredAccounts() {
     );
   }
 
-  return { purged };
+  return { purged, skipped };
 }

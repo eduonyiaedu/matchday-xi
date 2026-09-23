@@ -3,6 +3,9 @@ import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 
+/** Same rule the signup forms and /api/auth/check-username enforce. */
+const USERNAME_PATTERN = /^[a-z0-9_]{3,20}$/;
+
 /** Returns the app's User row for the currently authenticated Supabase session, or null. */
 export async function getCurrentUser() {
   const supabase = await createClient();
@@ -49,6 +52,9 @@ export const getOrCreateCurrentUser = cache(async () => {
   if (!authUser) return null;
 
   const existingUser = await prisma.user.findUnique({ where: { id: authUser.id } });
+  // Already anonymized by PURGE_EXPIRED_ACCOUNTS (its login deletion follows the anonymize, and
+  // could fail and retry) — never let a lingering login reactivate a "Deleted user" row.
+  if (existingUser?.email.endsWith("@deleted.matchday-xi.app")) return null;
   if (existingUser) {
     // Logging back in ever cancels a pending deletion — deliberately not conditioned on
     // deletionScheduledAt still being in the future. PURGE_EXPIRED_ACCOUNTS only runs once daily,
@@ -70,7 +76,14 @@ export const getOrCreateCurrentUser = cache(async () => {
   const tosConsentedAt = authUser.user_metadata?.tosConsentedAt as string | undefined;
   if (!ageConfirmedAt || !tosConsentedAt) return null;
 
-  const requestedUsername = authUser.user_metadata?.username as string | undefined;
+  // user_metadata is client-controlled (set by the browser at signup, or copied from the OAuth
+  // callback's ?username= param), so the signup form's format rule is re-checked here — the only
+  // server-side gate before the value becomes a permanent, public username. Anything that fails it
+  // (uppercase lookalikes of an existing name, overlong strings, reserved "deleted-…" shapes) falls
+  // back to the generated username below instead.
+  const rawUsername: unknown = authUser.user_metadata?.username;
+  const requestedUsername =
+    typeof rawUsername === "string" && USERNAME_PATTERN.test(rawUsername) ? rawUsername : undefined;
   const fallbackBase = sanitizeUsernameBase(authUser.email?.split("@")[0] ?? "player");
   const displayName =
     (authUser.user_metadata?.full_name as string | undefined) ??
