@@ -90,6 +90,15 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
             </Card>
           </Link>
 
+          <Link href="/admin/prizes">
+            <Card className="h-full hover:bg-white/5">
+              <CardContent className="pt-4">
+                <p className="font-heading text-sm font-semibold uppercase">Prizes</p>
+                <p className="mt-1 text-xs text-muted-foreground">Monthly draw winners and season 1st/2nd/3rd</p>
+              </CardContent>
+            </Card>
+          </Link>
+
           <Link href="/admin/feedback">
             <Card className="h-full hover:bg-white/5">
               <CardContent className="flex items-center justify-between pt-4">

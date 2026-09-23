@@ -115,6 +115,13 @@ transaction even reads. Three fix patterns are established here, depending on wh
   can retry rather than permanently marking something "handled" that was actually just lost. Return
   a boolean (or similar) rather than swallowing everything into `void`. Both `lib/notify.ts` and
   `lib/push.ts` follow this now — if a new best-effort sender gets added, match it.
+- **For anything that notifies users, keep "who gets what" separate from actually sending.** The
+  founder's phone is the only real device with push enabled, and the database is shared with live
+  verification — so calling a real sender in a test pings the founder. `lib/prize-notify.ts`
+  splits each announcement into a `plan…Pushes()` function (returns recipients + payloads, sends
+  nothing) and a `notify…IfNeeded()` function (atomic claim, then sends the plan). Tests verify the
+  plan — recipients, exclusions, wording — without any push leaving the server. New notification
+  code should follow the same split.
 - **A lock scoped to a narrower resource can't safely decide something that spans a wider shared
   resource.** `lineup-scoring.ts`'s `applyOfficialLineup` locks on `(fixtureId, teamId)` — correct
   for preventing two calls for the *same* team from double-counting points, but a home-team call

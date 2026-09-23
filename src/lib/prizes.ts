@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import crypto from "node:crypto";
+import { notifyMonthlyDrawIfNeeded } from "@/lib/prize-notify";
 
 function monthKey(year: number, monthIndex0: number): string {
   return `${year}-${String(monthIndex0 + 1).padStart(2, "0")}`;
@@ -173,10 +174,15 @@ export async function runMonthlyPrizeRollupIfDue() {
   const prevMonthDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
   const key = monthKey(prevMonthDate.getUTCFullYear(), prevMonthDate.getUTCMonth());
 
-  const existingDraw = await prisma.monthlyPrizeDraw.findUnique({ where: { month: key }, select: { drawnAt: true } });
-  if (existingDraw?.drawnAt) return { ran: false, reason: `${key} already drawn` };
+  const existingDraw = await prisma.monthlyPrizeDraw.findUnique({ where: { month: key }, select: { id: true, drawnAt: true } });
+  if (existingDraw?.drawnAt) {
+    // Already drawn — but if a previous run died between drawing and announcing, finish that.
+    const notified = await notifyMonthlyDrawIfNeeded(existingDraw.id);
+    return { ran: false, reason: `${key} already drawn`, notified };
+  }
 
   const eligibility = await computeMonthlyEligibility(key);
   const draw = await performMonthlyDraw(key);
-  return { ran: true, month: key, eligibility, draw };
+  const notified = await notifyMonthlyDrawIfNeeded(draw.id);
+  return { ran: true, month: key, eligibility, draw, notified };
 }

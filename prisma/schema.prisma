@@ -115,6 +115,7 @@ model User {
   dailyLogins          DailyLoginLog[]
   monthlyEligibilities MonthlyPrizeEligibility[]
   monthlyPrizeDrawsWon MonthlyPrizeDraw[]
+  seasonPrizes         SeasonPrize[]
   createdLeagues       PrivateLeague[]           @relation("LeagueCreator")
   leagueMemberships    PrivateLeagueMembership[]
   pushSubscriptions    PushSubscription[]
@@ -203,6 +204,7 @@ model Competition {
   currentSeasonEndDate   DateTime? @db.Date
 
   fixtures            Fixture[]
+  seasonPrizes        SeasonPrize[]
   restrictedByLeagues PrivateLeague[]
   standings           LeagueStanding[]
   topScorers          TopScorer[]
@@ -448,9 +450,38 @@ model MonthlyPrizeDraw {
   winner        User?     @relation(fields: [winnerUserId], references: [id])
   eligibleCount Int       @default(0)
   drawnAt       DateTime?
+  /// Set once the winner (and everyone else) has been pushed the result — see lib/prize-notify.ts.
+  winnerNotifiedAt DateTime?
+  /// Set when the winner dismisses the "You won!" banner on their Home screen.
+  winnerSeenAt  DateTime?
   createdAt     DateTime  @default(now())
 
   @@index([winnerUserId])
+}
+
+/// Season-end prize placings (1st/2nd/3rd on the global leaderboard), recorded only when the
+/// founder confirms them on /admin/prizes after the competition's season has ended — see
+/// lib/season-prizes.ts. Points/Perfect XIs are snapshotted at confirmation, so later changes
+/// (a correction, an anonymized account) never rewrite a confirmed result.
+model SeasonPrize {
+  id             String      @id @default(uuid())
+  competitionId  String
+  competition    Competition @relation(fields: [competitionId], references: [id])
+  /// e.g. "2026-27", from the competition's season dates at confirmation time.
+  season         String
+  place          Int
+  userId         String
+  user           User        @relation(fields: [userId], references: [id])
+  totalPoints    Int
+  perfectXiCount Int
+  confirmedAt    DateTime    @default(now())
+  /// Set once winners and everyone else have been pushed the result.
+  notifiedAt     DateTime?
+  /// Set when the winner dismisses their "You won!" banner on Home.
+  seenAt         DateTime?
+
+  @@unique([competitionId, season, place])
+  @@index([userId])
 }
 
 /// Free-tier private competitions (rulebook §12b). Paid fields exist but are hard-disabled in this build.

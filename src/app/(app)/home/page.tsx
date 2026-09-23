@@ -9,6 +9,8 @@ import { HomeAvatar } from "@/components/home/home-avatar";
 import { HeroPitchLines } from "@/components/home/hero-pitch-lines";
 import { LogoutButton } from "@/components/layout/logout-button";
 import { PushOptIn } from "@/components/push/push-opt-in";
+import { PrizeWinBanner, type PrizeWin } from "@/components/prizes/prize-win-banner";
+import { monthLabel, ordinal } from "@/lib/prize-notify";
 import { computeGlobalRank, computeLeagueStandings } from "@/lib/rank";
 import { getNextEligibleFixture, isPredictionWindowOpen, predictionOpensAt } from "@/lib/next-fixture";
 import { getTeamColors } from "@/lib/team-colors";
@@ -75,6 +77,28 @@ export default async function HomePage() {
     : null;
   const nextFixtureWindowOpen = nextFixture ? isPredictionWindowOpen(nextFixture) : false;
 
+  // Prizes this user has won but not yet acknowledged — shown until they tap "Got it".
+  const [unseenDraws, unseenSeasonPrizes] = await Promise.all([
+    prisma.monthlyPrizeDraw.findMany({
+      where: { winnerUserId: user.id, drawnAt: { not: null }, winnerSeenAt: null },
+      orderBy: { month: "asc" },
+      select: { id: true, month: true },
+    }),
+    prisma.seasonPrize.findMany({
+      where: { userId: user.id, seenAt: null },
+      orderBy: { confirmedAt: "asc" },
+      select: { id: true, season: true, place: true },
+    }),
+  ]);
+  const prizeWins: PrizeWin[] = [
+    ...unseenSeasonPrizes.map((p) => ({
+      kind: "season" as const,
+      id: p.id,
+      title: `You finished ${ordinal(p.place)} in the ${p.season} season!`,
+    })),
+    ...unseenDraws.map((d) => ({ kind: "monthly" as const, id: d.id, title: `You won the ${monthLabel(d.month)} prize draw!` })),
+  ];
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
@@ -95,6 +119,8 @@ export default async function HomePage() {
           teams={switchableTeams}
         />
       </div>
+
+      <PrizeWinBanner wins={prizeWins} />
 
       <PushOptIn />
 

@@ -2,6 +2,7 @@ import { getOrCreateCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { computeLiveMonthlyProgress } from "@/lib/prizes";
 import { recordDailyLoginIfNeeded } from "@/lib/streaks";
+import { monthLabel } from "@/lib/prize-notify";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ComingSoonCard } from "@/components/prizes/coming-soon-card";
@@ -26,6 +27,14 @@ export default async function PrizesPage() {
     orderBy: { month: "desc" },
     include: { winner: { select: { displayName: true } } },
   });
+  const latestSeason = await prisma.seasonPrize.findFirst({ orderBy: { confirmedAt: "desc" }, select: { season: true } });
+  const latestSeasonPrizes = latestSeason
+    ? await prisma.seasonPrize.findMany({
+        where: { season: latestSeason.season },
+        orderBy: { place: "asc" },
+        include: { user: { select: { displayName: true } } },
+      })
+    : [];
 
   return (
     <div className="flex flex-col gap-6">
@@ -67,7 +76,7 @@ export default async function PrizesPage() {
           )}
           {lastDraw?.winner && (
             <p className="mt-2 text-muted-foreground">
-              Last month&apos;s winner: <span className="font-medium">{lastDraw.winner.displayName}</span>
+              {monthLabel(lastDraw.month)} winner: <span className="font-medium text-chalk">{lastDraw.winner.displayName}</span> 🏆
             </p>
           )}
         </CardContent>
@@ -81,6 +90,17 @@ export default async function PrizesPage() {
             place prizes. Ties broken by Perfect XI count, then earliest account creation date.
           </CardDescription>
         </CardHeader>
+        {latestSeasonPrizes.length > 0 && (
+          <CardContent className="flex flex-col gap-1.5 text-sm">
+            <p className="text-muted-foreground">{latestSeasonPrizes[0].season} season winners:</p>
+            {latestSeasonPrizes.map((p) => (
+              <p key={p.id}>
+                {["🥇", "🥈", "🥉"][p.place - 1]} <span className="font-medium">{p.user.displayName}</span>{" "}
+                <span className="text-muted-foreground">· {p.totalPoints} pts</span>
+              </p>
+            ))}
+          </CardContent>
+        )}
       </Card>
 
       <div>
