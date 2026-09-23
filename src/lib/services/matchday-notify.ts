@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { leagueEndDateLowerBoundFor } from "@/lib/league-window";
 import { sendPushToUsers, type PushPayload } from "@/lib/push";
 import { scopeKeyFor } from "@/lib/prediction-scope";
+import { REAL_FIXTURES_ONLY } from "@/lib/real-fixture";
 import type { Fixture, Team } from "@/generated/prisma/client";
 
 interface PendingPush {
@@ -29,6 +30,7 @@ export async function matchdayNotifySweep() {
   // for a fixture they can no longer predict for would just be confusing.
   const todaysFixtures = await prisma.fixture.findMany({
     where: {
+      ...REAL_FIXTURES_ONLY,
       status: "SCHEDULED",
       matchdayNotifiedAt: null,
       lockAt: { gt: now },

@@ -1,15 +1,17 @@
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
-import { apiFootballClient, type ApiFootballSquadPlayer } from "@/lib/api-football/client";
+import { apiFootballClient, ApiFootballBudgetError, type ApiFootballSquadPlayer } from "@/lib/api-football/client";
 import { API_FOOTBALL_CLUB_TEAM_IDS } from "@/lib/api-football/club-team-ids";
 import { matchPlayerName } from "@/lib/player-matching";
 import type { PlayerPosition } from "@/generated/prisma/enums";
 
-// API-Football's free tier is 10 requests/minute AND ~100/day, the latter shared with the
-// time-critical lineup-checking cron — this job must stay small and infrequent. 3 clubs/run at
-// 2 requests each (senior + U21) is 6 requests/run, run once daily (see the workflow entry),
-// leaving the daily budget almost entirely free for matchday lineup-checking.
-const MAX_CLUBS_PER_ENRICHMENT_RUN = 3;
+// API-Football's free tier is 10 requests/minute AND 100/day, both shared with the time-critical
+// lineup-checking cron, and the client (lib/api-football/client.ts) holds every caller to 3
+// requests per calendar minute. So each run does exactly 1 club (2 requests: senior + U21),
+// fitting inside one minute's budget, and the workflow runs it 3 times a day an hour apart
+// (see sync-shirt-numbers.yml) — the same ~3 clubs/day, 6 requests/day as before, without ever
+// needing more than one minute's budget at once.
+const MAX_CLUBS_PER_ENRICHMENT_RUN = 1;
 const REQUEST_SPACING_MS = 700;
 
 function sleep(ms: number): Promise<void> {
@@ -153,6 +155,7 @@ export async function syncShirtNumbersAndU21Squads() {
   let u21Matched = 0;
   const skipped: string[] = [];
   const processed: string[] = [];
+  const deferred: string[] = [];
   const failed: { team: string; error: string }[] = [];
 
   for (const team of teams) {
@@ -183,6 +186,12 @@ export async function syncShirtNumbersAndU21Squads() {
       await prisma.team.update({ where: { id: team.id }, data: { apiFootballSquadSyncedAt: new Date() } });
       processed.push(team.name);
     } catch (error) {
+      if (error instanceof ApiFootballBudgetError && error.window === "minute") {
+        // Not a failure: another caller (e.g. lineup-checking, or an admin click) used this
+        // minute's budget. The club isn't stamped as synced, so it stays first in line next run.
+        deferred.push(team.name);
+        break;
+      }
       failed.push({ team: team.name, error: error instanceof Error ? error.message : String(error) });
     }
   }
@@ -197,5 +206,5 @@ export async function syncShirtNumbersAndU21Squads() {
     );
   }
 
-  return { clubsProcessed: processed, clubsSkipped: skipped, seniorMatched, u21Created, u21Matched };
+  return { clubsProcessed: processed, clubsSkipped: skipped, clubsDeferred: deferred, seniorMatched, u21Created, u21Matched };
 }

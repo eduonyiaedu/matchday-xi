@@ -2,12 +2,16 @@ name: Sync shirt numbers and U21 squads
 
 # Deliberately its own workflow, not folded into sync-fixtures-and-squads.yml — that one runs
 # every 6 hours, but this job draws from API-Football's shared ~100-req/day budget (also used by
-# the time-critical lineup-checking cron), so it runs only once a day. No hard `needs:` on
+# the time-critical lineup-checking cron), so it stays small: 1 club (2 requests) per run, run
+# 3 times in the off-peak early morning, an hour apart, so no single run ever needs more than one
+# minute's worth of the client's 3-requests-per-minute cap (see squad-enrichment-sync.ts). Even if
+# GitHub's scheduler delays and bunches these up, the client-side cap still holds — a run that
+# finds the minute's budget used just defers its club to the next run. No hard `needs:` on
 # sync-squads is possible across two different schedules, but that's fine in practice: senior
-# squads are refreshed 4x/day by that job, so they're always well ahead of this once-daily run.
+# squads are refreshed 4x/day by that job, so they're always well ahead of these runs.
 on:
   schedule:
-    - cron: "0 3 * * *" # once daily, 03:00 UTC — off-peak, clear of any matchday lineup-checking
+    - cron: "0 3,4,5 * * *" # 03:00, 04:00, 05:00 UTC — off-peak, clear of any matchday lineup-checking
   workflow_dispatch: {}
 
 jobs:

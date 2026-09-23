@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { sendPushToUsers } from "@/lib/push";
 import { scopeKeyFor } from "@/lib/prediction-scope";
+import { REAL_FIXTURES_ONLY } from "@/lib/real-fixture";
 
 const LOCK_WARNING_MINUTES = 30;
 
@@ -19,7 +20,7 @@ export async function notifySweep() {
 
   // "Predictions are open" — fires the moment a fixture crosses its 24h-before-kickoff window.
   const candidatesForOpen = await prisma.fixture.findMany({
-    where: { status: "SCHEDULED", openNotifiedAt: null, kickoffAt: { gt: now } },
+    where: { ...REAL_FIXTURES_ONLY, status: "SCHEDULED", openNotifiedAt: null, kickoffAt: { gt: now } },
     include: { homeTeam: true, awayTeam: true },
   });
   for (const fixture of candidatesForOpen) {
@@ -61,6 +62,7 @@ export async function notifySweep() {
   const warningCutoff = new Date(now.getTime() + LOCK_WARNING_MINUTES * 60_000);
   const candidatesForLockWarning = await prisma.fixture.findMany({
     where: {
+      ...REAL_FIXTURES_ONLY,
       status: { in: ["SCHEDULED", "LOCKED"] },
       lockWarningNotifiedAt: null,
       lockAt: { gt: now, lte: warningCutoff },

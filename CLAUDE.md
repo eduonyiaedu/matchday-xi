@@ -47,6 +47,16 @@ whichever turned something up last time:
    caught fixes that looked right but weren't, more than once.
 6. Live-verify user-facing fixes with a disposable test account (`npm run create-test-user`),
    clean up the test data (both the Prisma rows and the Supabase auth user) afterward.
+   **There is only one database — live verification writes into production**, and the live
+   cron jobs act on whatever they find there. Confirmed real (2026-09-22/23): LOCKED test
+   fixtures got picked up by the 5-minute jobs, which called API-Football, emailed the founder
+   "lineup fetch failed" alerts, and sent a "fixture locked" push to every fan of both clubs
+   (luckily none were real users at the time). So: **every disposable test fixture must use a
+   negative `externalId`** (real football-data.org ids are always positive), and every scheduled
+   job's fixture query spreads `REAL_FIXTURES_ONLY` from `src/lib/real-fixture.ts` — any new job
+   that queries fixtures must add it too. Also remember `/leagues` lists *every* private league
+   to *every* user, so a leftover test league is publicly visible — sweep for test users, leagues,
+   and fixtures at the end of every round, not just the ones the current script created.
 7. Always ask before committing/pushing, even after a large multi-fix round.
 8. Before wrapping up, check whether anything learned this round is durable and non-obvious — if
    so, propose folding it into this file too, the same way step 7 asks about committing. Confirmed
@@ -133,6 +143,22 @@ transaction even reads. Three fix patterns are established here, depending on wh
   Any endpoint taking a `season` param is hard-blocked for the current season on the free plan.
 - **Net effect**: no free path to per-match goal-scorer/assist events for the current season on
   either provider — a season-long aggregate is the ceiling without a paid tier upgrade.
+- **API-Football request caps (free tier: 100/day, 10/minute) are enforced in code, before every
+  request**, by DB-backed counters in `src/lib/api-football/client.ts` (`ApiUsageCounter` rows):
+  90/day, and 3 per UTC calendar minute — 3 rather than 9 because any 60-second span touches at
+  most 3 calendar minutes, which guarantees ≤9 in any rolling minute however bursts line up. Both
+  are env vars (`API_FOOTBALL_DAILY_REQUEST_CAP`, `API_FOOTBALL_PER_MINUTE_CAP`) to raise after a
+  paid-tier upgrade. Never call API-Football except through that client. A refused request throws
+  `ApiFootballBudgetError` before anything is sent: `window: "minute"` is routine back-pressure —
+  callers defer to their next run (lineup-check hands the fixture's attempt back; squad
+  enrichment leaves the club unstamped) and must NOT treat it as a failure or alert on it.
+  Worst realistic day (10 simultaneous kickoffs, all 20 clubs followed) is ~31 lineup requests
+  (one shared `/fixtures?date=` lookup + ≤3 lineup checks per match) + 6 squad-enrichment = ~37.
+- **Match API-Football data to ours by club ID, never by name.** football-data.org and
+  API-Football use different club names ("Arsenal FC" vs "Arsenal") and unrelated team-id spaces;
+  use `src/lib/api-football/match.ts` (backed by the static `API_FOOTBALL_CLUB_TEAM_IDS` table).
+  Name/ID comparisons across the two providers silently never matched — confirmed 2026-09-23,
+  automated lineup fetching had never once resolved a fixture before this was fixed.
 
 ## Other gotchas worth knowing before you hit them yourself
 

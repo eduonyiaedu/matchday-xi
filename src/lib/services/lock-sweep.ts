@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { sendPushToUsers } from "@/lib/push";
 import { scopeKeyFor } from "@/lib/prediction-scope";
 import { groupBySignaturePercentage } from "@/lib/lineup-match";
+import { REAL_FIXTURES_ONLY } from "@/lib/real-fixture";
 
 /**
  * Flips SCHEDULED fixtures to LOCKED once their lockAt time has passed, for UI/query convenience.
@@ -11,7 +12,7 @@ import { groupBySignaturePercentage } from "@/lib/lineup-match";
  */
 export async function lockSweep() {
   const result = await prisma.fixture.updateMany({
-    where: { status: "SCHEDULED", lockAt: { lte: new Date() } },
+    where: { ...REAL_FIXTURES_ONLY, status: "SCHEDULED", lockAt: { lte: new Date() } },
     data: { status: "LOCKED" },
   });
 
@@ -33,7 +34,7 @@ export async function lockSweep() {
 async function sendLockNudges(): Promise<number> {
   const now = new Date();
   const fixtures = await prisma.fixture.findMany({
-    where: { status: "LOCKED", lockNotifiedAt: null, lockAt: { lte: now } },
+    where: { ...REAL_FIXTURES_ONLY, status: "LOCKED", lockNotifiedAt: null, lockAt: { lte: now } },
     select: { id: true, homeTeamId: true, awayTeamId: true },
   });
 
