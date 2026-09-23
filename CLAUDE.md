@@ -253,6 +253,24 @@ transaction even reads. Three fix patterns are established here, depending on wh
   looks logged-out (pages 307 to `/login`, API routes 403). Confirmed live 2026-09-23. That's why
   `.claude/launch.json` is deliberately url-only: start `npm run dev` from a normal shell (in the
   background), then `preview_start` just attaches to `http://localhost:3000`.
+- **Sign-up/log-in are CAPTCHA-protected (Cloudflare Turnstile, enabled 2026-09-23).** Supabase
+  Auth rejects any email sign-up, password log-in or magic-link request without a passed Turnstile
+  token (`captcha_failed`) — Google OAuth isn't affected. The public site key is built into
+  `src/components/auth/turnstile-widget.tsx` for the two live hostnames only (localhost and
+  preview deployments render no widget, so their email log-in forms fail against the same
+  Supabase project — use Google or the admin-API session below); `NEXT_PUBLIC_TURNSTILE_SITE_KEY`
+  overrides it. The secret key lives only in Supabase → Authentication → Attack Protection, and in
+  Cloudflare → Turnstile → "Matchday XI" (which also lists the allowed hostnames — add a new
+  domain there *and* to `PRODUCTION_HOSTNAMES` when the app gets its own domain). The admin-API
+  magic-link session below bypasses the CAPTCHA, so live verification is unaffected; never try to
+  solve the widget in an automated browser.
+- **Duplicate-account detection (prize fair play) — lib/account-trust.ts.** New accounts are
+  auto-flagged (`isFlaggedDuplicate` + `flagReason`, out of prize contention, never blocked) for a
+  throwaway inbox, the same inbox under another spelling (`normalizedEmail`), or turning up on a
+  device another, older account already uses (`UserDevice`, from the proxy's random `mxi_device`
+  cookie, recorded on every signed-in page load). Admins are never flagged, and a flag the founder
+  clears on /admin sets `flagClearedAt`, which automatic checks always respect — never re-flag
+  over it. Both `normalizedEmail` and `UserDevice` rows are personal data: the purge clears them.
 - **Live-verifying signed-in flows without typing a password anywhere:** in a temp script under
   `scripts/`, call the Supabase admin API's `auth.admin.generateLink({ type: "magiclink", email })`
   for a disposable test account, then `verifyOtp({ token_hash: data.properties.hashed_token, type:
