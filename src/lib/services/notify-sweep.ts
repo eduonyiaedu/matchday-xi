@@ -108,7 +108,15 @@ export async function notifySweep() {
   }
 
   // Deliver whatever is still queued (a send too big for one run, or retries) — lib/push.ts.
-  const delivery = await drainPushOutbox(20_000);
+  const delivery = await drainPushOutbox(20_000, { removeGivenUp: true });
+  // Pushes dropped after repeated delivery failures mean something is broken (e.g. the VAPID keys)
+  // — fail this job run so it shows on /admin/jobs rather than every notification vanishing quietly.
+  if (delivery.gaveUp > 0) {
+    throw new Error(
+      `${delivery.gaveUp} push notification(s) dropped after 5 failed delivery attempts — check the push setup (VAPID keys). ` +
+        `This run: opened ${opened}, lockWarned ${lockWarned}, delivered ${delivery.sent}, failed ${delivery.failed}.`,
+    );
+  }
 
   return { opened, lockWarned, delivery };
 }

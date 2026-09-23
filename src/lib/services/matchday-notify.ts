@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { leagueEndDateLowerBoundFor } from "@/lib/league-window";
-import { sendPushToUsers, type PushPayload } from "@/lib/push";
+import { queuePushes, type PushPayload } from "@/lib/push";
 import { scopeKeyFor } from "@/lib/prediction-scope";
 import { REAL_FIXTURES_ONLY } from "@/lib/real-fixture";
 import type { Fixture, Team } from "@/generated/prisma/client";
@@ -180,12 +180,16 @@ async function buildGlobalPush(
   };
 }
 
-/** Returns false if either half of the send had a real failure, so the caller can retry. */
+/**
+ * Queues both halves together, all-or-nothing — returns false only if neither was queued, so the
+ * caller's retry can never re-send to the half that already went.
+ */
 async function sendPush(plan: PendingPush): Promise<boolean> {
   const base: Omit<PushPayload, "body"> = { title: "Matchday XI", url: plan.url };
-  const sentNotPredicted = await sendPushToUsers(plan.notPredicted, { ...base, body: plan.notPredictedBody });
-  const sentPredicted = await sendPushToUsers(plan.predicted, { ...base, body: plan.predictedBody });
-  return sentNotPredicted && sentPredicted;
+  return queuePushes([
+    { userIds: plan.notPredicted, payload: { ...base, body: plan.notPredictedBody } },
+    { userIds: plan.predicted, payload: { ...base, body: plan.predictedBody } },
+  ]);
 }
 
 // Matches the app's own "day/month/year HH:mm (HH:mm GMT)" convention (see ui/local-time.tsx) as

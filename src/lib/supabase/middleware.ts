@@ -8,8 +8,11 @@ import { DEVICE_COOKIE, DEVICE_COOKIE_MAX_AGE, isValidDeviceId } from "@/lib/dev
  */
 export async function updateSession(request: NextRequest) {
   // First visit from this browser: give it a device id (lib/device-id.ts). Put on the request too,
-  // so the pages rendering this same request already see it.
-  const newDeviceId = isValidDeviceId(request.cookies.get(DEVICE_COOKIE)?.value) ? null : crypto.randomUUID();
+  // so the pages rendering this same request already see it. Page loads only, never /api/*: a
+  // Set-Cookie stops Vercel's CDN caching a response (the share-card images, fetched cookie-less by
+  // link-preview bots), and a cached response carrying one would hand many browsers the same id.
+  const isApi = request.nextUrl.pathname.startsWith("/api/");
+  const newDeviceId = isApi || isValidDeviceId(request.cookies.get(DEVICE_COOKIE)?.value) ? null : crypto.randomUUID();
   if (newDeviceId) request.cookies.set(DEVICE_COOKIE, newDeviceId);
   const withDeviceCookie = (response: NextResponse) => {
     if (newDeviceId) {

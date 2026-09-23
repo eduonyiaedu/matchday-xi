@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { sendPushToUsers } from "@/lib/push";
+import { queuePushes } from "@/lib/push";
 import type { PlannedPush } from "@/lib/prize-notify";
 import { recomputeCurrentSeasonTotals, type SeasonInfo } from "@/lib/seasons";
 
@@ -96,10 +96,8 @@ export async function runSeasonRolloverIfNeeded(
 
   let pushed = 0;
   if (!opts.firstSeasonEver) {
-    for (const push of await planNewSeasonPushes(season)) {
-      await sendPushToUsers(push.userIds, push.payload);
-      pushed += push.userIds.length;
-    }
+    const plan = await planNewSeasonPushes(season);
+    if (await queuePushes(plan, "broadcast")) pushed = plan.reduce((n, p) => n + p.userIds.length, 0);
   }
   return { seasonTotalsReset, unlocked, pushed };
 }

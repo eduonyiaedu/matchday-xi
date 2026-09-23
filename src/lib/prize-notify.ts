@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { sendPushToUsers, type PushPayload } from "@/lib/push";
+import { queuePushes, type PushPayload } from "@/lib/push";
 
 /**
  * Prize announcements (founder's choice, 2026-09-23): the winner gets a push AND a "You won!"
@@ -65,7 +65,11 @@ export async function notifyMonthlyDrawIfNeeded(drawId: string): Promise<boolean
   });
   if (count === 0) return false;
   const draw = await prisma.monthlyPrizeDraw.findUniqueOrThrow({ where: { id: drawId } });
-  for (const push of await planMonthlyDrawPushes(draw)) await sendPushToUsers(push.userIds, push.payload);
+  // Queued all-or-nothing; if the queue couldn't be written, release the claim so it's retried.
+  if (!(await queuePushes(await planMonthlyDrawPushes(draw), "broadcast"))) {
+    await prisma.monthlyPrizeDraw.update({ where: { id: drawId }, data: { winnerNotifiedAt: null } });
+    return false;
+  }
   return true;
 }
 
@@ -108,6 +112,10 @@ export async function notifySeasonPrizesIfNeeded(competitionId: string, season: 
     season,
     prizes.map((p) => ({ place: p.place, userId: p.userId, displayName: p.user.displayName })),
   );
-  for (const push of plan) await sendPushToUsers(push.userIds, push.payload);
+  // Queued all-or-nothing; if the queue couldn't be written, release the claim so it's retried.
+  if (!(await queuePushes(plan, "broadcast"))) {
+    await prisma.seasonPrize.updateMany({ where: { competitionId, season }, data: { notifiedAt: null } });
+    return false;
+  }
   return true;
 }

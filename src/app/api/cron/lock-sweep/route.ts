@@ -3,7 +3,7 @@ import { verifyCronSecret } from "@/lib/cron-auth";
 import { withJobRun } from "@/lib/job-run";
 import { lockSweep } from "@/lib/services/lock-sweep";
 import { notifySweep } from "@/lib/services/notify-sweep";
-import { advanceSeasonExports } from "@/lib/season-export";
+import { advanceSeasonExports, SEASON_EXPORT_PENDING } from "@/lib/season-export";
 import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
   // cron-job.org schedule for notifySweep alone — logged as separate JobRuns either way.
   // A season export being built in the background (lib/season-export.ts) gets its next piece done
   // on each tick — only logged as a job run while one is actually in progress.
-  const exportPending = (await prisma.season.count({ where: { exportStatus: { in: ["QUEUED", "RUNNING"] } } })) > 0;
+  const exportPending = (await prisma.season.count({ where: SEASON_EXPORT_PENDING })) > 0;
   const [lockResult, notifyResult, exportResult] = await Promise.all([
     withJobRun("LOCK_SWEEP", lockSweep),
     withJobRun("NOTIFY_SWEEP", notifySweep),

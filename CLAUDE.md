@@ -125,15 +125,24 @@ transaction even reads. Three fix patterns are established here, depending on wh
   `Season.exportEmailClaimedAt/exportEmailedAt` (lib/season-export.ts): an atomic claim
   (`updateMany` where not done and the claim is null *or older than ~10 min*, so a killed run's
   claim can be retaken), mark done only after the work succeeds, release the claim on failure.
-- **`sendPushToUsers` (lib/push.ts) queues, it doesn't send.** It writes one `PushOutbox` row per
-  device and returns true once queued (false only if the queue write itself failed); delivery
-  happens in `drainPushOutbox` — started in the background via `after()` right away, and again on
-  every 5-minute notify sweep — at most 25 devices at once, in batches claimed with `FOR UPDATE
-  SKIP LOCKED`. The queue handles everything callers used to: expired devices (410/404) are
-  deleted, other failures retried with back-off up to 5 times, anything older than 2 hours dropped
-  (a late "lock in 30 minutes" is worse than none). So a caller's `false` no longer means "a device
-  failed" — don't build retry logic on it beyond clearing its own dedup flag. Built for sends to
-  tens of thousands of fans, which used to be one `Promise.all` in one 60-second function.
+- **Pushes are queued, not sent (lib/push.ts).** `queuePushes(sends, kind)` /
+  `sendPushToUsers(userIds, payload, kind)` write one `PushOutbox` row per device and return true
+  once queued. Several sends passed to one `queuePushes` call are queued **all-or-nothing** (one
+  transaction) — use that whenever one logical notification has several parts (e.g. matchday's
+  predicted/not-predicted halves), so a caller retrying on `false` can never re-send to the part
+  that already went. `false` means "nothing was queued", never "a device failed".
+  **Pick the kind:** `"timely"` (default — opens, lock warnings, matchday, scoring: delivered first,
+  dropped after 2 hours) or `"broadcast"` (prize announcements, new season — waits behind timely
+  ones, kept a day). Delivery (`drainPushOutbox`) runs in the background via `after()` right away
+  and on every 5-minute notify sweep: small batches claimed with `FOR UPDATE SKIP LOCKED`, sorted
+  by priority (RETURNING doesn't keep the subquery's order — sort in code), 25 devices at once,
+  10s timeout per device, delivered rows deleted as it goes (a killed run re-sends at most a
+  handful). Expired devices (410/404) are deleted; failures retry with back-off up to 5 times.
+  **Only the sweep's drain (`removeGivenUp`) removes pushes that failed 5 times, and it fails the
+  NOTIFY_SWEEP job run when it does** — that's how a broken push setup becomes visible on
+  /admin/jobs instead of every notification vanishing silently. Background drains must not remove
+  them. Built for sends to tens of thousands of fans, which used to be one `Promise.all` in one
+  60-second function.
 - **For anything that notifies users, keep "who gets what" separate from actually sending.** The
   founder's phone is the only real device with push enabled, and the database is shared with live
   verification — so calling a real sender in a test pings the founder. `lib/prize-notify.ts`

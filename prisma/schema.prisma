@@ -512,6 +512,9 @@ model Season {
   exportCursor      Json?
   /// Held by the run currently building; a stale claim (a killed run) is retaken.
   exportClaimedAt   DateTime?
+  /// Runs in a row that took the build without saving any progress — a build that keeps getting
+  /// killed is marked FAILED after a few, instead of being retried forever.
+  exportAttempts    Int         @default(0)
   exportError       String?
   /// Email the founder the download links when the build finishes.
   exportEmailWanted Boolean     @default(false)
@@ -682,12 +685,17 @@ model PushOutbox {
   subscription   PushSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
   /// {title, body, url} — the same payload for every device of one send.
   payload        Json
+  /// 0 = time-critical (opens, lock warnings, matchday, scoring) — always delivered first;
+  /// 1 = broadcast (prize announcements, new season) — can wait behind them.
+  priority       Int              @default(0)
+  /// Past this it's no longer worth delivering (a late "lock in 30 minutes" is worse than none).
+  expiresAt      DateTime
   attempts       Int              @default(0)
   /// Set while a delivery run is working on this row; a stale claim (a killed run) is retaken.
   claimedAt      DateTime?
   createdAt      DateTime         @default(now())
 
-  @@index([createdAt])
+  @@index([priority, createdAt])
   @@index([subscriptionId])
 }
 

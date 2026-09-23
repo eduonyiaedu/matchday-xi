@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 declare global {
   interface Window {
@@ -57,12 +57,20 @@ function loadScript(): Promise<void> {
  */
 export function TurnstileWidget({ siteKey, onToken }: { siteKey: string; onToken: (token: string | null) => void }) {
   const container = useRef<HTMLDivElement>(null);
+  // Shown when the check can't load or errors (blocked script, network) — otherwise the email
+  // buttons would just sit disabled with no explanation.
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   // `onToken` should be stable (e.g. a useState setter) — a new one re-creates the widget.
   useEffect(() => {
     if (!siteKey) return;
     let widgetId: string | null = null;
     let cancelled = false;
+    const fail = () => {
+      onToken(null);
+      if (!cancelled) setFailed(true);
+    };
     loadScript()
       .then(() => {
         if (cancelled || !container.current || !window.turnstile) return;
@@ -71,16 +79,36 @@ export function TurnstileWidget({ siteKey, onToken }: { siteKey: string; onToken
           theme: "dark",
           callback: (token: string) => onToken(token),
           "expired-callback": () => onToken(null),
-          "error-callback": () => onToken(null),
+          "error-callback": fail,
         });
       })
-      .catch(() => onToken(null));
+      .catch(fail);
     return () => {
       cancelled = true;
       if (widgetId && window.turnstile) window.turnstile.remove(widgetId);
     };
-  }, [siteKey, onToken]);
+  }, [siteKey, onToken, attempt]);
 
   if (!siteKey) return null;
-  return <div ref={container} className="min-h-[65px]" />;
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div ref={container} className="min-h-[65px]" />
+      {failed && (
+        <p className="text-xs text-destructive">
+          The security check couldn&apos;t load — check your connection or turn off any content blocker.{" "}
+          <button
+            type="button"
+            className="underline"
+            onClick={() => {
+              setFailed(false);
+              setAttempt((n) => n + 1);
+            }}
+          >
+            Try again
+          </button>{" "}
+          (Continue with Google works without it.)
+        </p>
+      )}
+    </div>
+  );
 }

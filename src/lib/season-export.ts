@@ -23,6 +23,8 @@ const PREDICTIONS_PER_FILE = 200_000;
 const PAGE_SIZE = 2_000;
 /** A build run's claim older than this (the run was killed) can be retaken. */
 const STALE_CLAIM_MS = 5 * 60 * 1000;
+/** Runs in a row that may take a build and get killed without progress before it's marked FAILED. */
+const MAX_ATTEMPTS_WITHOUT_PROGRESS = 3;
 /** An email claim older than this that never finished can be retaken. */
 const STALE_EMAIL_CLAIM_MS = 10 * 60 * 1000;
 
@@ -351,6 +353,7 @@ export async function requestSeasonExport(season: SeasonInfo, opts: { email: boo
       exportError: null,
       exportCursor: JSON.parse(JSON.stringify(cursor)),
       exportClaimedAt: null,
+      exportAttempts: 0,
       exportEmailWanted: opts.email,
     },
   });
@@ -368,33 +371,60 @@ export async function requestSeasonExport(season: SeasonInfo, opts: { email: boo
  * on the same build. When a build finishes, the previous build's files are deleted and, if asked,
  * the download links are emailed.
  */
+/** Seasons with export work outstanding: a build in progress, or finished links still to email. */
+export const SEASON_EXPORT_PENDING = {
+  OR: [{ exportStatus: { in: ["QUEUED", "RUNNING"] } }, { exportStatus: "READY", exportEmailWanted: true }],
+};
+
 export async function advanceSeasonExports(budgetMs = 40_000, opts: { rowsPerFile?: number } = {}) {
   const rowsPerFile = opts.rowsPerFile ?? PREDICTIONS_PER_FILE;
-  const deadline = Date.now() + budgetMs;
-  const pending = await prisma.season.findMany({ where: { exportStatus: { in: ["QUEUED", "RUNNING"] } }, select: { id: true } });
+  const runStart = Date.now();
+  const deadline = runStart + budgetMs;
+  const pending = await prisma.season.findMany({ where: SEASON_EXPORT_PENDING, select: { id: true, exportStatus: true } });
   const results: { season: string; status: string; files: number }[] = [];
 
-  for (const { id } of pending) {
+  for (const { id, exportStatus } of pending) {
     if (Date.now() > deadline - 10_000) break;
+
+    // A finished build whose links email didn't go out (e.g. a brief Resend outage) — retry it
+    // here rather than leaving the founder waiting on an email that will never come.
+    if (exportStatus === "READY") {
+      const season = await seasonInfoById(id);
+      const sent = await emailSeasonExportLinks(season);
+      results.push({ season: season.label, status: sent ? "links emailed" : "failed: links email not sent", files: 0 });
+      continue;
+    }
+
     const { count } = await prisma.season.updateMany({
       where: {
         id,
         exportStatus: { in: ["QUEUED", "RUNNING"] },
         OR: [{ exportClaimedAt: null }, { exportClaimedAt: { lt: new Date(Date.now() - STALE_CLAIM_MS) } }],
       },
-      data: { exportClaimedAt: new Date(), exportStatus: "RUNNING" },
+      data: { exportClaimedAt: new Date(), exportStatus: "RUNNING", exportAttempts: { increment: 1 } },
     });
     if (count === 0) continue;
 
     const season = await seasonInfoById(id);
     try {
       let row = await prisma.season.findUniqueOrThrow({ where: { id } });
+      // Each run that takes the build and gets killed before saving any progress counts once
+      // (saving progress resets it) — so a build that can never fit in a run fails visibly and
+      // can be rebuilt, instead of being retried every 5 minutes forever.
+      if (row.exportAttempts > MAX_ATTEMPTS_WITHOUT_PROGRESS) {
+        throw new Error(
+          `Stopped after ${MAX_ATTEMPTS_WITHOUT_PROGRESS} runs in a row ran out of time without finishing a single file — the season's data may be too big to build on the current plan.`,
+        );
+      }
       let cursor = row.exportCursor as unknown as ExportCursor;
       let finished = false;
       const folder = `seasons/${season.label}/${cursor.requestId}`;
 
       while (!finished && Date.now() < deadline - 10_000) {
         if (cursor.step === "main") {
+          // The main workbook is one piece that can't be split — only start it at the beginning
+          // of a run, with the whole time budget ahead of it.
+          if (Date.now() - runStart > 5_000) break;
           const path = `${folder}/1-main.xlsx`;
           await uploadFile(path, await buildMainWorkbook(season), XLSX_TYPE);
           cursor = { ...cursor, step: "predictions", files: [...cursor.files, { path, label: "Main workbook" }] };
@@ -411,13 +441,15 @@ export async function advanceSeasonExports(budgetMs = 40_000, opts: { rowsPerFil
         }
         await prisma.season.update({
           where: { id },
-          data: { exportCursor: JSON.parse(JSON.stringify(cursor)), exportClaimedAt: new Date() },
+          data: { exportCursor: JSON.parse(JSON.stringify(cursor)), exportClaimedAt: new Date(), exportAttempts: 0 },
         });
       }
 
       if (!finished) {
         // Out of time for this run — release the claim; the next run carries on from the cursor.
-        await prisma.season.update({ where: { id }, data: { exportClaimedAt: null } });
+        // (A run that stopped cleanly without progress, e.g. too late to start the main workbook,
+        // didn't get killed — don't count it.)
+        await prisma.season.update({ where: { id }, data: { exportClaimedAt: null, exportAttempts: 0 } });
         results.push({ season: season.label, status: "in progress", files: cursor.files.length });
         continue;
       }
@@ -430,14 +462,16 @@ export async function advanceSeasonExports(budgetMs = 40_000, opts: { rowsPerFil
           exportFinishedAt: new Date(),
           exportCursor: Prisma.DbNull,
           exportClaimedAt: null,
+          exportAttempts: 0,
         },
       });
       // Earlier builds' files are superseded — delete them from storage.
       for (const old of await listFolders(`seasons/${season.label}`)) {
         if (old !== cursor.requestId) await removeFolder(`seasons/${season.label}/${old}`);
       }
-      if (row.exportEmailWanted) await emailSeasonExportLinks(season);
-      results.push({ season: season.label, status: "ready", files: cursor.files.length });
+      // If this send fails, exportEmailWanted stays set and the next sweep retries it (above).
+      const emailed = row.exportEmailWanted ? await emailSeasonExportLinks(season) : true;
+      results.push({ season: season.label, status: emailed ? "ready" : "failed: ready, but the links email wasn't sent", files: cursor.files.length });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`[season-export] ${season.label} build failed:`, error);
