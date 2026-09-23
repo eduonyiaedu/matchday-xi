@@ -139,6 +139,20 @@ transaction even reads. Three fix patterns are established here, depending on wh
 - A long-running `next dev` process does **not** pick up a regenerated Prisma client after
   `prisma db push` + `generate` — it needs a hard restart, or every query referencing a new
   field/model throws a validation error that looks like a real bug but isn't.
+- **A dev server launched via the in-app preview tool (`preview_start` with a command) runs
+  sandboxed and can't make outbound HTTPS calls** — Postgres still works (public DB-backed pages
+  render fine), but every Supabase auth call fails with `fetch failed`, so every signed-in request
+  looks logged-out (pages 307 to `/login`, API routes 403). Confirmed live 2026-09-23. That's why
+  `.claude/launch.json` is deliberately url-only: start `npm run dev` from a normal shell (in the
+  background), then `preview_start` just attaches to `http://localhost:3000`.
+- **Live-verifying signed-in flows without typing a password anywhere:** in a temp script under
+  `scripts/`, call the Supabase admin API's `auth.admin.generateLink({ type: "magiclink", email })`
+  for a disposable test account, then `verifyOtp({ token_hash: data.properties.hashed_token, type:
+  "magiclink" })` on an `@supabase/ssr` `createServerClient` whose `setAll` collects cookies into an
+  array — and send those as a `cookie:` header on `fetch` calls to the local dev server. Gotcha:
+  `@supabase/ssr` writes the cookie from an auth-state listener that fires *after* `verifyOtp`
+  resolves, so wait ~500ms before reading the array or it's empty and every request is rejected.
+  An admin test account still needs its Prisma `User` row created directly with `role: "ADMIN"`.
 - A sibling git worktree under `.claude/worktrees/*` can make `npm run lint`/`vitest run` report
   spurious massive error/test counts (the `.next/**` ignore glob only matches at the project root).
   Before treating a lint/test spike as real, check `git status --short` for anything under
