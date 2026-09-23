@@ -1,11 +1,29 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { DEVICE_COOKIE, DEVICE_COOKIE_MAX_AGE, isValidDeviceId } from "@/lib/device-id";
 
 /**
  * Refreshes the Supabase auth session cookie on every request and redirects
  * unauthenticated users away from protected routes.
  */
 export async function updateSession(request: NextRequest) {
+  // First visit from this browser: give it a device id (lib/device-id.ts). Put on the request too,
+  // so the pages rendering this same request already see it.
+  const newDeviceId = isValidDeviceId(request.cookies.get(DEVICE_COOKIE)?.value) ? null : crypto.randomUUID();
+  if (newDeviceId) request.cookies.set(DEVICE_COOKIE, newDeviceId);
+  const withDeviceCookie = (response: NextResponse) => {
+    if (newDeviceId) {
+      response.cookies.set(DEVICE_COOKIE, newDeviceId, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: DEVICE_COOKIE_MAX_AGE,
+      });
+    }
+    return response;
+  };
+
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -48,8 +66,8 @@ export async function updateSession(request: NextRequest) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/login";
     redirectUrl.searchParams.set("next", request.nextUrl.pathname);
-    return NextResponse.redirect(redirectUrl);
+    return withDeviceCookie(NextResponse.redirect(redirectUrl));
   }
 
-  return supabaseResponse;
+  return withDeviceCookie(supabaseResponse);
 }

@@ -3,6 +3,7 @@ import { getOrCreateCurrentUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { recordDailyLoginIfNeeded } from "@/lib/streaks";
 import { recordSessionActivity } from "@/lib/session-tracking";
+import { recordDeviceUse } from "@/lib/account-trust";
 import { prisma } from "@/lib/prisma";
 import { getTeamColors } from "@/lib/team-colors";
 import { buildPerfectXiTakeoverPayload } from "@/lib/perfect-xi-payload";
@@ -29,7 +30,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // On the one request per UTC day this actually increments, `user.currentStreak` (fetched
   // above) is already stale — use the returned value for the nav badge, not the pre-call one.
   const currentStreak = await recordDailyLoginIfNeeded(user);
-  await recordSessionActivity(user.id);
+  // Device use feeds the several-accounts-on-one-phone check (lib/account-trust.ts).
+  await Promise.all([recordSessionActivity(user.id), recordDeviceUse(user.id)]);
 
   // Global --club accent (nav highlight, focus rings via --ring, avatar, pinned leaderboard
   // row) is always the VIEWER's own favorite team — never the team a specific prediction is

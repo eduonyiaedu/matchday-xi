@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
-import { TurnstileWidget, TURNSTILE_SITE_KEY } from "@/components/auth/turnstile-widget";
+import { TurnstileWidget, useTurnstileSiteKey } from "@/components/auth/turnstile-widget";
 
 const USERNAME_PATTERN = /^[a-z0-9_]{3,20}$/;
 
@@ -38,12 +38,13 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Bot check for the email paths (Google has its own) — only when a Turnstile key is configured.
+  const turnstileSiteKey = useTurnstileSiteKey();
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [captchaKey, setCaptchaKey] = useState(0);
-  const captchaReady = !TURNSTILE_SITE_KEY || captchaToken !== null;
+  const captchaReady = !turnstileSiteKey || captchaToken !== null;
   /** Tokens are single-use — get a fresh one after every attempt. */
   function resetCaptcha() {
-    if (!TURNSTILE_SITE_KEY) return;
+    if (!turnstileSiteKey) return;
     setCaptchaToken(null);
     setCaptchaKey((k) => k + 1);
   }
@@ -251,7 +252,7 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
           </div>
         )}
 
-        <TurnstileWidget key={captchaKey} onToken={setCaptchaToken} />
+        <TurnstileWidget key={captchaKey} siteKey={turnstileSiteKey} onToken={setCaptchaToken} />
 
         <Button type="submit" disabled={loading !== null || !consentGiven || !captchaReady}>
           {mode === "login" ? "Log in" : "Create account"}

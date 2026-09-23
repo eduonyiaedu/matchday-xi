@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getTeamColors } from "@/lib/team-colors";
 import { recordDailyLoginIfNeeded } from "@/lib/streaks";
 import { recordSessionActivity } from "@/lib/session-tracking";
+import { recordDeviceUse } from "@/lib/account-trust";
 import { Button } from "@/components/ui/button";
 import { AppNav } from "@/components/layout/app-nav";
 import { Footer } from "@/components/layout/footer";
@@ -28,7 +29,7 @@ export default async function PublicLayout({ children }: { children: React.React
     });
     if (favoriteTeam) {
       const currentStreak = await recordDailyLoginIfNeeded(user);
-      await recordSessionActivity(user.id);
+      await Promise.all([recordSessionActivity(user.id), recordDeviceUse(user.id)]);
       const club = getTeamColors(favoriteTeam.externalId);
       return (
         <div

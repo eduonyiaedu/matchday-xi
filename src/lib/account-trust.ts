@@ -1,4 +1,6 @@
+import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
+import { DEVICE_COOKIE, isValidDeviceId } from "@/lib/device-id";
 
 const DELETED_EMAIL_SUFFIX = "@deleted.matchday-xi.app";
 
@@ -52,4 +54,33 @@ export async function assessNewAccount(email: string): Promise<{ normalizedEmail
   });
   if (twin) return { normalizedEmail, flagReason: `Same inbox as @${twin.username} (a different spelling of the same email)` };
   return { normalizedEmail, flagReason: null };
+}
+
+/**
+ * Remembers that this account was used on this device (the browser's device-id cookie — see
+ * lib/device-id.ts), called on every signed-in page load: a single insert that does nothing for
+ * an already-known pair. The first time an account turns up on a device another account already
+ * uses, every account on that device except the oldest is flagged out of prize contention —
+ * several accounts on one phone is the usual way to enter the prize draws more than once. Never
+ * blocks anything; admins are never flagged, and an account the founder has cleared
+ * (flagClearedAt) is never re-flagged automatically — a shared family phone is a real case.
+ */
+export async function recordDeviceUse(userId: string): Promise<void> {
+  const deviceId = (await cookies()).get(DEVICE_COOKIE)?.value;
+  if (!isValidDeviceId(deviceId)) return;
+  const { count } = await prisma.userDevice.createMany({ data: [{ userId, deviceId }], skipDuplicates: true });
+  if (count === 0) return;
+
+  const links = await prisma.userDevice.findMany({
+    where: { deviceId, user: { NOT: { email: { endsWith: DELETED_EMAIL_SUFFIX } } } },
+    select: { user: { select: { id: true, username: true, createdAt: true, role: true, isFlaggedDuplicate: true, flagClearedAt: true } } },
+  });
+  if (links.length < 2) return;
+  const [oldest, ...newer] = links.map((l) => l.user).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  const toFlag = newer.filter((u) => u.role !== "ADMIN" && !u.isFlaggedDuplicate && !u.flagClearedAt).map((u) => u.id);
+  if (toFlag.length === 0) return;
+  await prisma.user.updateMany({
+    where: { id: { in: toFlag }, isFlaggedDuplicate: false, flagClearedAt: null },
+    data: { isFlaggedDuplicate: true, flagReason: `Used on the same device as @${oldest.username}` },
+  });
 }

@@ -108,6 +108,8 @@ model User {
   /// — `flagReason` says why); an admin can clear it.
   isFlaggedDuplicate   Boolean   @default(false)
   flagReason           String?
+  /// Set when an admin switches the flag off — automatic flagging never re-flags this account.
+  flagClearedAt        DateTime?
   /// Email with provider aliasing removed (Gmail dots, "+tag" suffixes) — the same inbox signing up
   /// twice under different spellings shares this value. See lib/account-trust.ts.
   normalizedEmail      String?
@@ -134,6 +136,7 @@ model User {
   pushSubscriptions    PushSubscription[]
   sessionLogs          SessionLog[]
   seasonStandings      SeasonStandingSnapshot[]
+  devices              UserDevice[]
 
   @@index([favoriteTeamId])
   @@index([totalPoints])
@@ -654,6 +657,19 @@ model PushSubscription {
   outbox    PushOutbox[]
 
   @@index([userId])
+}
+
+/// Which accounts have been used on which device (browser) — from a random first-party device-id
+/// cookie, nothing else about the device. Lets several accounts run from one phone be spotted
+/// (lib/account-trust.ts). Deleted with the account when it's purged.
+model UserDevice {
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId    String
+  firstSeenAt DateTime @default(now())
+
+  @@id([userId, deviceId])
+  @@index([deviceId])
 }
 
 /// Push notifications waiting to be delivered — one row per device (subscription). Senders queue

@@ -17,7 +17,11 @@ export async function POST(request: NextRequest) {
 
   const { count } = await prisma.user.updateMany({
     where: { id: parsed.data.userId },
-    data: { isFlaggedDuplicate: parsed.data.flagged, flagReason: parsed.data.flagged ? "Flagged by admin" : null },
+    // Clearing a flag is remembered, so automatic checks (lib/account-trust.ts) never re-flag
+    // someone the founder has already judged genuine.
+    data: parsed.data.flagged
+      ? { isFlaggedDuplicate: true, flagReason: "Flagged by admin", flagClearedAt: null }
+      : { isFlaggedDuplicate: false, flagReason: null, flagClearedAt: new Date() },
   });
   if (count === 0) return NextResponse.json({ error: "User not found" }, { status: 404 });
   return NextResponse.json({ userId: parsed.data.userId, flagged: parsed.data.flagged });

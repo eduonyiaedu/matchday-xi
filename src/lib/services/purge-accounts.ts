@@ -61,6 +61,8 @@ export async function purgeExpiredAccounts() {
         // recipients by favoriteTeamId (kept, so their points stay on the leaderboards), and
         // push.ts then sends to every subscription of those users.
         await tx.pushSubscription.deleteMany({ where: { userId: id } });
+        // Which devices they used (lib/account-trust.ts) is personal data too.
+        await tx.userDevice.deleteMany({ where: { userId: id } });
         return true;
       });
       if (!claimed) {
