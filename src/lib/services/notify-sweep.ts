@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { sendPushToUsers } from "@/lib/push";
+import { drainPushOutbox, sendPushToUsers } from "@/lib/push";
 import { scopeKeyFor } from "@/lib/prediction-scope";
 import { REAL_FIXTURES_ONLY } from "@/lib/real-fixture";
 
@@ -107,5 +107,8 @@ export async function notifySweep() {
     lockWarned++;
   }
 
-  return { opened, lockWarned };
+  // Deliver whatever is still queued (a send too big for one run, or retries) — lib/push.ts.
+  const delivery = await drainPushOutbox(20_000);
+
+  return { opened, lockWarned, delivery };
 }

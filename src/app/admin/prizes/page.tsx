@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Footer } from "@/components/layout/footer";
 import { LocalTime } from "@/components/ui/local-time";
 import { ConfirmSeasonPrizesButton } from "@/components/admin/confirm-season-prizes-button";
-import { EmailSeasonExportButton } from "@/components/admin/email-season-export-button";
+import { SeasonExportControls } from "@/components/admin/season-export-controls";
 import { getPrizeSeason, provisionalPodium } from "@/lib/season-prizes";
 import { monthLabel, ordinal } from "@/lib/prize-notify";
 
@@ -29,7 +29,18 @@ export default async function AdminPrizesPage() {
       include: { winner: { select: { displayName: true, username: true, email: true } } },
     }),
     getPrizeSeason(),
-    prisma.season.findMany({ orderBy: { startDate: "desc" }, select: { label: true, endDate: true, exportEmailedAt: true } }),
+    prisma.season.findMany({
+      orderBy: { startDate: "desc" },
+      select: {
+        label: true,
+        endDate: true,
+        exportEmailedAt: true,
+        exportStatus: true,
+        exportFinishedAt: true,
+        exportFiles: true,
+        exportError: true,
+      },
+    }),
   ]);
   const confirmed = season
     ? await prisma.seasonPrize.findMany({
@@ -124,39 +135,57 @@ export default async function AdminPrizesPage() {
           </CardHeader>
           <CardContent className="flex flex-col gap-3 text-sm">
             <p className="text-muted-foreground">
-              Everything gathered in a season, in one Excel workbook: traction metrics, the final
-              leaderboard, every prediction and score, fixtures and lineups, private leagues,
-              prize winners and the players list. Emailed to you automatically when you confirm a
-              season&apos;s winners; download it any time here (always built from the latest data).
+              Everything gathered in a season, as Excel files: a main workbook (traction metrics,
+              the final leaderboard, fixtures and lineups, private leagues, prize winners and the
+              players list) plus every prediction and its score in separate Predictions files.
+              Prepared in the background — a big season can take a while — and the download links
+              are emailed to you automatically when you confirm a season&apos;s winners.
             </p>
             {allSeasons.length === 0 && <p className="text-muted-foreground">No seasons recorded yet.</p>}
-            {allSeasons.map((s, i) => (
-              <div key={s.label} className="flex flex-wrap items-center justify-between gap-2 border-b pb-2 last:border-0">
-                <div>
-                  <p className="font-medium">
-                    {s.label} season{i === 0 ? " (current — data so far)" : ""}
-                  </p>
+            {allSeasons.map((s, i) => {
+              const files = (s.exportFiles as { label: string }[] | null) ?? [];
+              return (
+                <div key={s.label} className="flex flex-col gap-2 border-b pb-3 last:border-0">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="font-medium">
+                      {s.label} season{i === 0 ? " (current — data so far)" : ""}
+                    </p>
+                    <SeasonExportControls season={s.label} status={s.exportStatus} />
+                  </div>
                   <p className="text-xs text-muted-foreground">
-                    {s.exportEmailedAt ? (
+                    {s.exportStatus === "QUEUED" || s.exportStatus === "RUNNING" ? (
+                      "Preparing… refresh this page to check on it."
+                    ) : s.exportStatus === "FAILED" ? (
+                      <span className="text-destructive">Last build failed: {s.exportError}</span>
+                    ) : s.exportStatus === "READY" && s.exportFinishedAt ? (
                       <>
-                        Emailed to you <LocalTime iso={s.exportEmailedAt.toISOString()} dateOnly />
+                        Built <LocalTime iso={s.exportFinishedAt.toISOString()} /> (data as of then)
                       </>
                     ) : (
-                      "Not emailed yet — sent automatically when this season's winners are confirmed"
+                      "Not prepared yet."
+                    )}
+                    {s.exportEmailedAt && (
+                      <>
+                        {" "}· Links emailed <LocalTime iso={s.exportEmailedAt.toISOString()} dateOnly />
+                      </>
                     )}
                   </p>
+                  {files.length > 0 && (
+                    <div className="flex flex-wrap gap-x-4 gap-y-1">
+                      {files.map((f, fileIndex) => (
+                        <a
+                          key={fileIndex}
+                          href={`/api/admin/season-export?season=${encodeURIComponent(s.label)}&file=${fileIndex}`}
+                          className="text-xs text-gold underline"
+                        >
+                          {f.label}
+                        </a>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <div className="flex gap-2">
-                  <EmailSeasonExportButton season={s.label} />
-                  <a
-                    href={`/api/admin/season-export?season=${encodeURIComponent(s.label)}`}
-                    className="rounded-lg px-3 py-1.5 font-heading text-xs tracking-[0.1em] uppercase ring-1 ring-white/12 hover:bg-white/5"
-                  >
-                    Download Excel
-                  </a>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </CardContent>
         </Card>
 

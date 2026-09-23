@@ -9,12 +9,14 @@ import { Input } from "@/components/ui/input";
 import { DuplicateFlagList } from "@/components/admin/duplicate-flag-list";
 import { Footer } from "@/components/layout/footer";
 
-export default async function AdminPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+export default async function AdminPage({ searchParams }: { searchParams: Promise<{ q?: string; flagged?: string }> }) {
   const user = await getOrCreateCurrentUser();
   if (!user) redirect("/login");
   if (user.role !== "ADMIN") redirect("/fixtures");
 
-  const q = (await searchParams).q?.trim().slice(0, 100) ?? "";
+  const params = await searchParams;
+  const q = params.q?.trim().slice(0, 100) ?? "";
+  const flaggedOnly = params.flagged === "1";
 
   const [unresolvedCount, feedbackCount, users] = await Promise.all([
     // Anything not yet fully scored — lets the founder jump into manual entry early (e.g. a
@@ -24,15 +26,18 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
     // Newest 30 by default; a search reaches any user, not just recent sign-ups — a duplicate
     // account is often discovered long after it was created.
     prisma.user.findMany({
-      where: q
-        ? {
-            OR: [
-              { email: { contains: q, mode: "insensitive" } },
-              { displayName: { contains: q, mode: "insensitive" } },
-              { username: { contains: q, mode: "insensitive" } },
-            ],
-          }
-        : undefined,
+      where: {
+        ...(q
+          ? {
+              OR: [
+                { email: { contains: q, mode: "insensitive" } },
+                { displayName: { contains: q, mode: "insensitive" } },
+                { username: { contains: q, mode: "insensitive" } },
+              ],
+            }
+          : {}),
+        ...(flaggedOnly ? { isFlaggedDuplicate: true } : {}),
+      },
       orderBy: { createdAt: "desc" },
       take: 30,
     }),
@@ -124,22 +129,35 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
               <Button type="submit" variant="outline" size="sm">
                 Search
               </Button>
-              {q && (
+              {flaggedOnly && <input type="hidden" name="flagged" value="1" />}
+              {(q || flaggedOnly) && (
                 <Link href="/admin" className="self-center text-xs text-muted-foreground hover:underline">
                   Clear
                 </Link>
               )}
             </form>
             <p className="text-xs text-muted-foreground">
-              {q ? `Up to 30 users matching "${q}"` : "Newest 30 users"}
+              Flagged accounts can play but can&apos;t win prizes. New accounts are flagged
+              automatically when they use a throwaway email address or are the same inbox as an
+              existing account under a different spelling — review them here and switch the flag
+              off for anyone genuine.{" "}
+              {!flaggedOnly && (
+                <Link href="/admin?flagged=1" className="underline">
+                  Show flagged accounts only
+                </Link>
+              )}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {q ? `Up to 30 ${flaggedOnly ? "flagged " : ""}users matching "${q}"` : `Newest 30 ${flaggedOnly ? "flagged " : ""}users`}
             </p>
             <DuplicateFlagList
-              key={q}
+              key={`${q}:${flaggedOnly}`}
               users={users.map((u) => ({
                 id: u.id,
                 email: u.email,
                 displayName: u.displayName,
                 isFlaggedDuplicate: u.isFlaggedDuplicate,
+                flagReason: u.flagReason,
               }))}
             />
           </CardContent>

@@ -59,7 +59,10 @@ export async function sendLineupAlert(params: {
  * Same contract as sendLineupAlert: true for a real send or deliberately-not-configured, false for
  * a genuine failure the caller can retry.
  */
-export async function sendSeasonExportEmail(params: { seasonLabel: string; filename: string; file: Buffer }): Promise<boolean> {
+export async function sendSeasonExportEmail(params: {
+  seasonLabel: string;
+  links: { label: string; url: string }[];
+}): Promise<boolean> {
   const apiKey = process.env.RESEND_API_KEY;
   const to = process.env.ALERT_EMAIL_TO;
   const appBaseUrl = process.env.APP_BASE_URL ?? "http://localhost:3000";
@@ -75,14 +78,17 @@ export async function sendSeasonExportEmail(params: { seasonLabel: string; filen
       from: "Matchday XI <onboarding@resend.dev>",
       to,
       subject: `Matchday XI — ${params.seasonLabel} season export`,
+      // Links, not attachments: a big season's files outgrow any email attachment limit.
       text: [
-        `The ${params.seasonLabel} season's prizes have been confirmed. Attached is everything the app gathered that season:`,
-        "traction metrics, the final leaderboard, every prediction and its score, fixtures and official lineups,",
-        "private leagues and their standings, prize winners, and the players list.",
+        `Everything the app gathered in the ${params.seasonLabel} season is ready to download:`,
+        "traction metrics, the final leaderboard, fixtures and official lineups, private leagues and",
+        "their standings, prize winners and the players list (main workbook), plus every prediction",
+        "and its score (the Predictions file(s)).",
         "",
-        `You can download it again any time from ${appBaseUrl}/admin/prizes`,
+        ...params.links.map((l) => `${l.label}:\n${l.url}\n`),
+        "These links work for 7 days. You can get fresh ones any time from",
+        `${appBaseUrl}/admin/prizes`,
       ].join("\n"),
-      attachments: [{ filename: params.filename, content: params.file }],
     });
     if (error) throw new Error(`${error.name}: ${error.message}`);
     return true;

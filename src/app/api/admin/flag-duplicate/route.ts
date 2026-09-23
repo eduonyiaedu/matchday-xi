@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
 
   const { count } = await prisma.user.updateMany({
     where: { id: parsed.data.userId },
-    data: { isFlaggedDuplicate: parsed.data.flagged },
+    data: { isFlaggedDuplicate: parsed.data.flagged, flagReason: parsed.data.flagged ? "Flagged by admin" : null },
   });
   if (count === 0) return NextResponse.json({ error: "User not found" }, { status: 404 });
   return NextResponse.json({ userId: parsed.data.userId, flagged: parsed.data.flagged });

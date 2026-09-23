@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/require-admin";
-import { getAdminMetrics, parseMetricsRange } from "@/lib/admin-metrics";
+import { getAdminMetricsCached, parseMetricsRange } from "@/lib/admin-metrics";
 import { buildXlsxWorkbook } from "@/lib/exports/xlsx-export";
 import { buildDocxReport } from "@/lib/exports/docx-export";
 import { buildPptxDeck } from "@/lib/exports/pptx-export";
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
     request.nextUrl.searchParams.get("to"),
   );
 
-  const sections = await getAdminMetrics(range);
+  const { sections } = await getAdminMetricsCached(range);
 
   const buffer =
     format === "xlsx"

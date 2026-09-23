@@ -52,6 +52,8 @@ export async function purgeExpiredAccounts() {
             // would then fail identically on every retry, forever.
             username: `deleted-${id}`,
             displayName: "Deleted user",
+            // Derived from the real email (lib/account-trust.ts) — personal data, so it goes too.
+            normalizedEmail: null,
           },
         });
         if (count === 0) return false;

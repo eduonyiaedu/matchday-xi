@@ -6,6 +6,7 @@ import {
 } from "@/lib/football-data/client";
 import type { PlayerPosition } from "@/generated/prisma/enums";
 import { voidFixtureAndReversePoints } from "@/lib/services/void-fixture";
+import { SeasonFrozenError } from "@/lib/seasons";
 
 // 45 days wasn't always enough to keep 5 upcoming fixtures in view for every club — international
 // breaks and cup rounds can leave a 3+ week gap between a club's league fixtures, so a shorter
@@ -179,7 +180,13 @@ async function syncFixturesForCompetition(code: string) {
     // Postponement/abandonment can be reported at any pipeline stage, including after scoring —
     // void unconditionally and reverse any already-awarded points (rulebook §10).
     if (existing && isVoidedUpstream) {
-      await voidFixtureAndReversePoints(existing.id);
+      try {
+        await voidFixtureAndReversePoints(existing.id);
+      } catch (error) {
+        // A closed season's results are final (view-only) — leave its fixture exactly as it is.
+        if (!(error instanceof SeasonFrozenError)) throw error;
+        console.warn(`[fixture-sync] not voiding ${existing.id}: ${error.message}`);
+      }
       upserted += 1;
       continue;
     }

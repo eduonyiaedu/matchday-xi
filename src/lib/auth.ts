@@ -2,6 +2,7 @@ import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
+import { assessNewAccount } from "@/lib/account-trust";
 
 /** Same rule the signup forms and /api/auth/check-username enforce. */
 const USERNAME_PATTERN = /^[a-z0-9_]{3,20}$/;
@@ -89,6 +90,13 @@ export const getOrCreateCurrentUser = cache(async () => {
     (authUser.user_metadata?.full_name as string | undefined) ??
     authUser.email?.split("@")[0] ??
     "Player";
+  // Likely duplicate / throwaway accounts are flagged out of prize contention (never blocked).
+  const trust = await assessNewAccount(authUser.email ?? "");
+  const trustFields = {
+    normalizedEmail: trust.normalizedEmail,
+    isFlaggedDuplicate: trust.flagReason !== null,
+    flagReason: trust.flagReason,
+  };
 
   try {
     return await prisma.user.create({
@@ -102,6 +110,7 @@ export const getOrCreateCurrentUser = cache(async () => {
         displayName,
         ageConfirmedAt: new Date(ageConfirmedAt),
         tosConsentedAt: new Date(tosConsentedAt),
+        ...trustFields,
       },
     });
   } catch (error) {
@@ -124,6 +133,7 @@ export const getOrCreateCurrentUser = cache(async () => {
           displayName,
           ageConfirmedAt: new Date(ageConfirmedAt),
           tosConsentedAt: new Date(tosConsentedAt),
+          ...trustFields,
         },
       });
     }

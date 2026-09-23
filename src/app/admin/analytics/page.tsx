@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getOrCreateCurrentUser } from "@/lib/auth";
-import { getAdminMetrics, parseMetricsRange } from "@/lib/admin-metrics";
+import { getAdminMetricsCached, parseMetricsRange } from "@/lib/admin-metrics";
+import { LocalTime } from "@/components/ui/local-time";
 import { MetricCard } from "@/components/admin/metric-card";
 import { MetricsDateRangeForm } from "@/components/admin/metrics-date-range-form";
 import { MetricsExportButtons } from "@/components/admin/metrics-export-buttons";
@@ -10,16 +11,16 @@ import { Footer } from "@/components/layout/footer";
 export default async function AdminAnalyticsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string }>;
+  searchParams: Promise<{ from?: string; to?: string; refresh?: string }>;
 }) {
   const user = await getOrCreateCurrentUser();
   if (!user) redirect("/login");
   if (user.role !== "ADMIN") redirect("/fixtures");
 
-  const { from: fromParam, to: toParam } = await searchParams;
+  const { from: fromParam, to: toParam, refresh } = await searchParams;
   const { range, fromInput, toInput } = parseMetricsRange(fromParam, toParam);
 
-  const sections = await getAdminMetrics(range);
+  const { sections, computedAt } = await getAdminMetricsCached(range, { refresh: refresh === "1" });
 
   return (
     <div className="flex min-h-svh flex-col">
@@ -38,6 +39,12 @@ export default async function AdminAnalyticsPage({
           <MetricsDateRangeForm defaultFrom={fromInput} defaultTo={toInput} />
           <MetricsExportButtons from={fromInput} to={toInput} />
         </div>
+        <p className="-mt-3 text-xs text-muted-foreground">
+          Figures as of <LocalTime iso={computedAt.toISOString()} /> — saved and reused for up to an hour (a day for ranges that end before today).{" "}
+          <Link href={`/admin/analytics?from=${fromInput}&to=${toInput}&refresh=1`} className="underline">
+            Recount now
+          </Link>
+        </p>
 
         {sections.map((section) => (
           <div key={section.key} className="flex flex-col gap-3">

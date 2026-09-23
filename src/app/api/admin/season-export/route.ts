@@ -1,48 +1,70 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/require-admin";
 import { listSeasons } from "@/lib/seasons";
-import { buildSeasonExport, emailSeasonExportIfNeeded, seasonExportFilename } from "@/lib/season-export";
+import {
+  advanceSeasonExports,
+  emailSeasonExportLinks,
+  requestSeasonExport,
+  seasonExportLinks,
+  type ExportFile,
+} from "@/lib/season-export";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
+async function findSeason(request: NextRequest) {
+  const label = request.nextUrl.searchParams.get("season");
+  return (await listSeasons()).find((s) => s.label === label) ?? null;
+}
+
 /**
- * "Email it to me" from /admin/prizes (?season=2026-27) — also the retry path if the automatic
- * email after confirming winners didn't arrive (re-confirming can't retry it: an already-confirmed
- * season is no longer the one up for confirmation).
+ * Download one file of a season's finished export (?season=2026-27&file=0) — redirects to a
+ * short-lived signed link to the stored file (admin only).
+ */
+export async function GET(request: NextRequest) {
+  const { response } = await requireAdmin();
+  if (response) return response;
+
+  const season = await findSeason(request);
+  if (!season) return NextResponse.json({ error: "Unknown season" }, { status: 404 });
+  const row = await prisma.season.findUniqueOrThrow({ where: { id: season.id }, select: { exportFiles: true } });
+  const files = (row.exportFiles as unknown as ExportFile[] | null) ?? [];
+  const file = files[Number(request.nextUrl.searchParams.get("file"))];
+  if (!file) return NextResponse.json({ error: "No such file — prepare the export first." }, { status: 404 });
+
+  const [link] = await seasonExportLinks([file], season.label);
+  return NextResponse.redirect(link.url);
+}
+
+const actionSchema = z.object({ action: z.enum(["build", "email"]) });
+
+/**
+ * From /admin/prizes: "build" (re)builds a season's export in the background; "email" emails the
+ * download links — straight away if an export is ready, otherwise once a new build finishes.
  */
 export async function POST(request: NextRequest) {
   const { response } = await requireAdmin();
   if (response) return response;
 
-  const label = request.nextUrl.searchParams.get("season");
-  const season = (await listSeasons()).find((s) => s.label === label);
+  const season = await findSeason(request);
   if (!season) return NextResponse.json({ error: "Unknown season" }, { status: 404 });
+  const parsed = actionSchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) return NextResponse.json({ error: "Invalid input" }, { status: 400 });
 
-  const sent = await emailSeasonExportIfNeeded(season, { resend: true });
-  if (!sent) {
-    return NextResponse.json(
-      { error: "Couldn't send it — it may already be on its way. Try again in a few minutes, or download it instead." },
-      { status: 409 },
-    );
+  const row = await prisma.season.findUniqueOrThrow({ where: { id: season.id }, select: { exportStatus: true } });
+  if (parsed.data.action === "email" && row.exportStatus === "READY") {
+    const sent = await emailSeasonExportLinks(season);
+    if (!sent) {
+      return NextResponse.json({ error: "Couldn't send it — it may already be on its way. Try again in a few minutes." }, { status: 409 });
+    }
+    return NextResponse.json({ status: "emailed" });
   }
-  return NextResponse.json({ sent: true });
-}
 
-/** Admin download of a season's full data export (?season=2026-27) — built fresh on each request. */
-export async function GET(request: NextRequest) {
-  const { response } = await requireAdmin();
-  if (response) return response;
-
-  const label = request.nextUrl.searchParams.get("season");
-  const season = (await listSeasons()).find((s) => s.label === label);
-  if (!season) return NextResponse.json({ error: "Unknown season" }, { status: 404 });
-
-  const file = await buildSeasonExport(season);
-  return new NextResponse(new Uint8Array(file), {
-    headers: {
-      "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename="${seasonExportFilename(season)}"`,
-    },
-  });
+  const started = await requestSeasonExport(season, { email: parsed.data.action === "email" });
+  // Start building now, in the background after this response; the 5-minute sweep carries on
+  // with anything that doesn't fit in this one run.
+  after(() => advanceSeasonExports(45_000).catch((error) => console.error("[season-export] background run failed:", error)));
+  return NextResponse.json({ status: started ? "started" : "already-running" });
 }

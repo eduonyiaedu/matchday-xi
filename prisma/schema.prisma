@@ -68,6 +68,7 @@ enum JobName {
   SYNC_STANDINGS
   MATCHDAY_NOTIFY
   PURGE_EXPIRED_ACCOUNTS
+  SEASON_EXPORT
 }
 
 enum JobStatus {
@@ -102,8 +103,14 @@ model User {
   /// Denormalized for fast leaderboard queries; kept in sync at scoring time.
   totalPoints          Int       @default(0)
   perfectXiCount       Int       @default(0)
-  /// Manual admin flag; disqualifies from prize eligibility without zeroing accrued points (rulebook §10).
+  /// Disqualifies from prize eligibility without zeroing accrued points (rulebook §10). Set by an
+  /// admin, or automatically at sign-up for a likely duplicate/throwaway account (lib/account-trust.ts
+  /// — `flagReason` says why); an admin can clear it.
   isFlaggedDuplicate   Boolean   @default(false)
+  flagReason           String?
+  /// Email with provider aliasing removed (Gmail dots, "+tag" suffixes) — the same inbox signing up
+  /// twice under different spellings shares this value. See lib/account-trust.ts.
+  normalizedEmail      String?
   /// Timestamp the user checked "I confirm I am 18 years of age or older" at signup. Captured for compliance records.
   ageConfirmedAt       DateTime?
   /// Timestamp the user checked "I agree to the Terms of Service and Privacy Policy" at signup. Captured for compliance records.
@@ -126,9 +133,11 @@ model User {
   leagueMemberships    PrivateLeagueMembership[]
   pushSubscriptions    PushSubscription[]
   sessionLogs          SessionLog[]
+  seasonStandings      SeasonStandingSnapshot[]
 
   @@index([favoriteTeamId])
   @@index([totalPoints])
+  @@index([normalizedEmail])
 }
 
 /// The 20 Premier League clubs plus any non-PL opponents that appear in FA Cup / EFL Cup fixtures.
@@ -489,9 +498,55 @@ model Season {
   /// standings sync instead of being silently skipped forever.
   rolloverClaimedAt DateTime?
   rolloverDoneAt    DateTime?
+  /// The season's full data export, built in the background in pieces and stored in Supabase
+  /// Storage (lib/season-export.ts): null (never requested) | QUEUED | RUNNING | READY | FAILED.
+  exportStatus      String?
+  exportRequestedAt DateTime?
+  exportFinishedAt  DateTime?
+  /// [{ path, label }] — the stored files of the latest build, in order.
+  exportFiles       Json?
+  /// Where the in-progress build has got to — see advanceSeasonExports.
+  exportCursor      Json?
+  /// Held by the run currently building; a stale claim (a killed run) is retaken.
+  exportClaimedAt   DateTime?
+  exportError       String?
+  /// Email the founder the download links when the build finishes.
+  exportEmailWanted Boolean     @default(false)
+  /// Set once this closed season's final table has been saved to SeasonStandingSnapshot.
+  standingsSnapshotAt DateTime?
   createdAt     DateTime    @default(now())
+  standings     SeasonStandingSnapshot[]
 
   @@unique([competitionId, label])
+}
+
+/// A closed season's final table, saved once (lib/seasons.ts) so viewing a past season's
+/// leaderboard is a cheap indexed read instead of re-adding up every prediction of that season.
+model SeasonStandingSnapshot {
+  seasonId       String
+  season         Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User   @relation(fields: [userId], references: [id])
+  /// The club the player predicted for that season (the one they scored most with).
+  teamId         String
+  totalPoints    Int
+  perfectXiCount Int
+  /// Place on the season's overall table (1 = top), tiebreaks already applied.
+  position       Int
+
+  @@id([seasonId, userId])
+  @@index([seasonId, position])
+  @@index([seasonId, teamId, position])
+  @@index([userId])
+}
+
+/// Saved traction-metrics results (lib/admin-metrics.ts) keyed by date range, so the metrics page
+/// and its exports read a recent result instead of recounting whole tables on every view.
+model MetricsSnapshot {
+  /// "<from>_<to>" as YYYY-MM-DD.
+  key        String   @id
+  sections   Json
+  computedAt DateTime @default(now())
 }
 
 /// One row each time a player actually shares (device share sheet) or saves their share card from
@@ -596,8 +651,28 @@ model PushSubscription {
   p256dh    String
   auth      String
   createdAt DateTime @default(now())
+  outbox    PushOutbox[]
 
   @@index([userId])
+}
+
+/// Push notifications waiting to be delivered — one row per device (subscription). Senders queue
+/// rows here and delivery works through them in batches with limited concurrency (lib/push.ts),
+/// so a notification to tens of thousands of fans can't time out one function part-way through.
+/// Rows are deleted once delivered, dropped once too old to still be useful.
+model PushOutbox {
+  id             String           @id @default(uuid())
+  subscriptionId String
+  subscription   PushSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  /// {title, body, url} — the same payload for every device of one send.
+  payload        Json
+  attempts       Int              @default(0)
+  /// Set while a delivery run is working on this row; a stale claim (a killed run) is retaken.
+  claimedAt      DateTime?
+  createdAt      DateTime         @default(now())
+
+  @@index([createdAt])
+  @@index([subscriptionId])
 }
 
 /// Lightweight first-party session tracker for the investor-metrics dashboard (admin-only) — a

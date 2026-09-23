@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { COMPETITION_CODES } from "@/lib/football-data/client";
 import { REAL_FIXTURES_ONLY } from "@/lib/real-fixture";
+import { chunked } from "@/lib/chunked";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DELETED_EMAIL_SUFFIX = "@deleted.matchday-xi.app";
@@ -44,6 +45,45 @@ export async function listSeasons(now = new Date()): Promise<SeasonInfo[]> {
 
 export async function getCurrentSeason(now = new Date()): Promise<SeasonInfo | null> {
   return (await listSeasons(now))[0] ?? null;
+}
+
+export class SeasonFrozenError extends Error {
+  constructor(label: string | null) {
+    super(`The ${label ?? "previous"} season is closed — its results can be viewed but no longer changed.`);
+    this.name = "SeasonFrozenError";
+  }
+}
+
+async function seasonPrizesConfirmed(season: Pick<SeasonInfo, "competitionId" | "label">): Promise<boolean> {
+  return (await prisma.seasonPrize.count({ where: { competitionId: season.competitionId, season: season.label } })) > 0;
+}
+
+/**
+ * A past season is closed — view-only — once a newer season has started and its winners have been
+ * confirmed (founder's rule, 2026-09-23: previous seasons can't be changed, only viewed). Until its
+ * winners are confirmed it stays correctable, so a final-day match whose lineup failed to fetch
+ * can still be entered — otherwise that season's prizes could never be confirmed at all.
+ */
+export async function isSeasonClosed(season: SeasonInfo, current: SeasonInfo | null): Promise<boolean> {
+  if (!current || season.id === current.id) return false;
+  return seasonPrizesConfirmed(season);
+}
+
+/**
+ * For anything about to change a fixture's points (scoring a lineup, voiding): may it, and do its
+ * points belong in User.totalPoints / perfectXiCount (the current season's totals)?
+ */
+export async function fixtureSeasonStatus(
+  kickoffAt: Date,
+): Promise<{ editable: boolean; inCurrentSeason: boolean; seasonLabel: string | null }> {
+  const seasons = await listSeasons();
+  const current = seasons[0];
+  if (!current || kickoffAt >= current.startDate) {
+    return { editable: true, inCurrentSeason: true, seasonLabel: current?.label ?? null };
+  }
+  const season = seasons.find((s) => kickoffAt >= s.startDate && kickoffAt.getTime() < s.endDate.getTime() + DAY_MS);
+  if (!season) return { editable: true, inCurrentSeason: false, seasonLabel: null };
+  return { editable: !(await isSeasonClosed(season, current)), inCurrentSeason: false, seasonLabel: season.label };
 }
 
 /** The recorded season a kickoff falls in (its last day included), or null. */
@@ -176,42 +216,104 @@ export async function seasonStandings(
 }
 
 /**
+ * Saves a closed season's final table to SeasonStandingSnapshot, once — after that, viewing that
+ * season's leaderboard is an indexed read instead of re-adding up every prediction of the season.
+ * Only for closed seasons (isSeasonClosed), whose results can no longer change. Safe to call
+ * concurrently: a lock plus a re-check means the table is written exactly once.
+ */
+export async function ensureSeasonSnapshot(season: SeasonInfo): Promise<void> {
+  const { standingsSnapshotAt } = await prisma.season.findUniqueOrThrow({
+    where: { id: season.id },
+    select: { standingsSnapshotAt: true },
+  });
+  if (standingsSnapshotAt) return;
+
+  const standings = await seasonStandings(season);
+  await prisma.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"season-snapshot:" + season.id}))`;
+      const fresh = await tx.season.findUniqueOrThrow({ where: { id: season.id }, select: { standingsSnapshotAt: true } });
+      if (fresh.standingsSnapshotAt) return;
+      const rows = standings.map((s, i) => ({
+        seasonId: season.id,
+        userId: s.userId,
+        teamId: s.teamId,
+        totalPoints: s.totalPoints,
+        perfectXiCount: s.perfectXiCount,
+        position: i + 1,
+      }));
+      // 7 columns a row — 4,000 rows keeps each statement under Postgres's bind-parameter limit.
+      for (const chunk of chunked(rows, 4_000)) await tx.seasonStandingSnapshot.createMany({ data: chunk, skipDuplicates: true });
+      await tx.season.update({ where: { id: season.id }, data: { standingsSnapshotAt: new Date() } });
+    },
+    { timeout: 30_000 },
+  );
+}
+
+/** Players per recompute batch — each batch is its own short transaction. */
+const RECOMPUTE_BATCH_SIZE = 2_000;
+
+/**
  * Makes every player's User.totalPoints / perfectXiCount exactly their CURRENT season's totals —
  * the global leaderboard resets each season (founder's decision, 2026-09-23), and those two
- * columns are what the live leaderboard, ranks and nav badge read. Runs when the standings sync
- * first sees a new season (the reset) and nightly from the daily rollup (a self-check that also
- * corrects any drift, e.g. a correction to a previous season's lineup landing after rollover).
- * One UPDATE, only touching rows whose totals differ. Returns how many rows it changed.
+ * columns are what the live leaderboard, ranks and nav badge read. Runs at a new season's rollover
+ * (the reset) and nightly from the daily rollup (a self-check that corrects any drift).
+ *
+ * Works through players in batches of RECOMPUTE_BATCH_SIZE, each in its own short transaction
+ * holding the exclusive season-totals lock, so the time any one transaction takes (and how long
+ * scoring waits on it) stays the same however many players there are — one UPDATE over everyone
+ * would eventually outgrow any transaction timeout. Each batch is exact on its own: scoring can't
+ * change a batch's players while it holds the lock, and a scoring run between batches is either
+ * already reflected in a later batch's read or only touched players already done (both correct).
+ * Returns how many rows it changed.
  */
-export async function recomputeCurrentSeasonTotals(): Promise<number> {
+export async function recomputeCurrentSeasonTotals(batchSize = RECOMPUTE_BATCH_SIZE): Promise<number> {
   const season = await getCurrentSeason();
   if (!season) return 0;
   const endExclusive = new Date(season.endDate.getTime() + DAY_MS);
 
-  return prisma.$transaction(
-    async (tx) => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${SEASON_TOTALS_LOCK}))`;
-      return tx.$executeRaw`
-        WITH season_totals AS (
-          SELECT p."userId",
-                 SUM(p."pointsAwarded")::int AS pts,
-                 COUNT(*) FILTER (WHERE p."isPerfectXi")::int AS pxi
-          FROM "Prediction" p
-          JOIN "Fixture" f ON f.id = p."fixtureId"
-          WHERE p."privateLeagueId" IS NULL
-            AND p."pointsAwarded" IS NOT NULL
-            AND f."externalId" > 0
-            AND f."kickoffAt" >= ${season.startDate}
-            AND f."kickoffAt" < ${endExclusive}
-          GROUP BY p."userId"
-        )
-        UPDATE "User" u
-        SET "totalPoints" = COALESCE(t.pts, 0), "perfectXiCount" = COALESCE(t.pxi, 0)
-        FROM "User" u2
-        LEFT JOIN season_totals t ON t."userId" = u2.id
-        WHERE u.id = u2.id
-          AND (u."totalPoints" <> COALESCE(t.pts, 0) OR u."perfectXiCount" <> COALESCE(t.pxi, 0))`;
-    },
-    { timeout: 30_000 },
-  );
+  let changed = 0;
+  let afterId = "";
+  for (;;) {
+    const batch = await prisma.user.findMany({
+      where: { id: { gt: afterId } },
+      orderBy: { id: "asc" },
+      take: batchSize,
+      select: { id: true },
+    });
+    if (batch.length === 0) break;
+    const ids = batch.map((u) => u.id);
+    afterId = ids[ids.length - 1];
+
+    changed += await prisma.$transaction(
+      async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${SEASON_TOTALS_LOCK}))`;
+        return tx.$executeRaw`
+          WITH season_totals AS (
+            SELECT p."userId",
+                   SUM(p."pointsAwarded")::int AS pts,
+                   COUNT(*) FILTER (WHERE p."isPerfectXi")::int AS pxi
+            FROM "Prediction" p
+            JOIN "Fixture" f ON f.id = p."fixtureId"
+            WHERE p."userId" = ANY(${ids})
+              AND p."privateLeagueId" IS NULL
+              AND p."pointsAwarded" IS NOT NULL
+              AND f."externalId" > 0
+              AND f."kickoffAt" >= ${season.startDate}
+              AND f."kickoffAt" < ${endExclusive}
+            GROUP BY p."userId"
+          )
+          UPDATE "User" u
+          SET "totalPoints" = COALESCE(t.pts, 0), "perfectXiCount" = COALESCE(t.pxi, 0)
+          FROM "User" u2
+          LEFT JOIN season_totals t ON t."userId" = u2.id
+          WHERE u.id = u2.id
+            AND u2.id = ANY(${ids})
+            AND (u."totalPoints" <> COALESCE(t.pts, 0) OR u."perfectXiCount" <> COALESCE(t.pxi, 0))`;
+      },
+      { timeout: 15_000 },
+    );
+    if (batch.length < batchSize) break;
+  }
+  return changed;
 }

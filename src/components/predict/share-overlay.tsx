@@ -21,7 +21,9 @@ export function ShareOverlay({ predictionId, onClose }: { predictionId: string; 
   useEffect(() => {
     let active = true;
     let objectUrl: string | null = null;
-    fetch(`/api/share/${predictionId}?format=story`)
+    // "no-cache": always check for the current card rather than reuse this browser's copy — the
+    // same URL changes from the predicted lineup to the scored result (served by the CDN, so cheap).
+    fetch(`/api/share/${predictionId}?format=story`, { cache: "no-cache" })
       .then((res) => {
         if (!res.ok) throw new Error("Failed to load share card");
         return res.blob();

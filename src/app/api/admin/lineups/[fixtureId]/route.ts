@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/require-admin";
 import { prisma } from "@/lib/prisma";
 import { applyOfficialLineup, FixtureVoidedError, type LineupEntryInput } from "@/lib/services/lineup-scoring";
+import { SeasonFrozenError } from "@/lib/seasons";
 import { z } from "zod";
 
 export const runtime = "nodejs";
@@ -92,6 +93,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   } catch (error) {
     if (error instanceof FixtureVoidedError) {
       return NextResponse.json({ error: "This fixture was just voided — its lineup can't be entered." }, { status: 409 });
+    }
+    if (error instanceof SeasonFrozenError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
     }
     throw error;
   }

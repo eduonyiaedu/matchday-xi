@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { scorePrediction } from "@/lib/scoring";
 import { sendPushToUsers } from "@/lib/push";
-import { SEASON_TOTALS_LOCK } from "@/lib/seasons";
+import { fixtureSeasonStatus, SEASON_TOTALS_LOCK, SeasonFrozenError } from "@/lib/seasons";
+import { chunked } from "@/lib/chunked";
 import type { LineupSource } from "@/generated/prisma/enums";
 
 /** Thrown when a fixture turns out to be VOIDED once inside the scoring transaction. */
@@ -10,13 +11,6 @@ export class FixtureVoidedError extends Error {
     super(`Fixture ${fixtureId} is voided and can't be scored.`);
     this.name = "FixtureVoidedError";
   }
-}
-
-/** Keeps each `IN (...)` list well under Postgres's 32,767 bind-parameter limit per statement. */
-function chunked<T>(items: T[], size = 5_000): T[][] {
-  const chunks: T[][] = [];
-  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
-  return chunks;
 }
 
 export interface LineupEntryInput {
@@ -40,6 +34,13 @@ export async function applyOfficialLineup(
   options: { formation?: string | null; source: LineupSource } = { source: "AUTOMATED" },
 ) {
   const resolvedPlayerIds = entries.map((e) => e.squadPlayerId).filter((id): id is string => !!id);
+
+  // A closed season is view-only (founder's rule, 2026-09-23). A previous season still awaiting
+  // its winners stays correctable, but its points no longer belong in User.totalPoints, which now
+  // holds the new season's totals.
+  const { kickoffAt } = await prisma.fixture.findUniqueOrThrow({ where: { id: fixtureId }, select: { kickoffAt: true } });
+  const seasonStatus = await fixtureSeasonStatus(kickoffAt);
+  if (!seasonStatus.editable) throw new SeasonFrozenError(seasonStatus.seasonLabel);
 
   // This runs from both the automated cron (every 5 min, up to kickoff) and the admin manual-entry
   // fallback — which exists specifically for when the automated fetch looks slow, i.e. exactly the
@@ -132,10 +133,11 @@ export async function applyOfficialLineup(
         // than incrementing again on top of a prior award, which would double-count every re-score.
         const pointsDelta = pointsAwarded - (prediction.pointsAwarded ?? 0);
         const perfectXiDelta = (isPerfectXi ? 1 : 0) - (prediction.isPerfectXi ? 1 : 0);
-        // Private-league predictions score separately and never touch global/team totals (§12b).
+        // Private-league predictions score separately and never touch global/team totals (§12b),
+        // and neither does a previous season's fixture (its points aren't in the current totals).
         // A user has at most one global prediction per fixture (scopeKey unique), so no user id
         // can land in two groups here.
-        if (!prediction.privateLeagueId && (pointsDelta !== 0 || perfectXiDelta !== 0)) {
+        if (seasonStatus.inCurrentSeason && !prediction.privateLeagueId && (pointsDelta !== 0 || perfectXiDelta !== 0)) {
           const deltaKey = `${pointsDelta}:${perfectXiDelta}`;
           const group = userIdsByDelta.get(deltaKey) ?? { pointsDelta, perfectXiDelta, ids: [] };
           group.ids.push(prediction.userId);

@@ -1,5 +1,5 @@
 import { after, NextResponse } from "next/server";
-import { emailSeasonExportIfNeeded } from "@/lib/season-export";
+import { advanceSeasonExports, requestSeasonExport } from "@/lib/season-export";
 import { requireAdmin } from "@/lib/require-admin";
 import { confirmSeasonPrizes, SeasonHasUnscoredFixturesError, SeasonNotOverError } from "@/lib/season-prizes";
 import { notifySeasonPrizesIfNeeded } from "@/lib/prize-notify";
@@ -19,10 +19,13 @@ export async function POST() {
   try {
     const result = await confirmSeasonPrizes();
     const notified = await notifySeasonPrizesIfNeeded(result.season.competitionId, result.season.label);
-    // The season's full data export is emailed to the founder once winners are confirmed (it
-    // includes them). Built after the response is sent so the Confirm button isn't kept waiting;
-    // sent at most once per season, and downloadable any time from /admin/prizes regardless.
-    after(() => emailSeasonExportIfNeeded(result.season));
+    // The season's full data export (it includes the winners) is built in the background once
+    // they're confirmed, and the download links emailed to the founder when it's ready — also
+    // available any time from /admin/prizes. The 5-minute sweep carries on with a big build.
+    if (result.created) {
+      await requestSeasonExport(result.season, { email: true });
+      after(() => advanceSeasonExports(35_000).catch((error) => console.error("[season-export] background run failed:", error)));
+    }
     return NextResponse.json({ season: result.season.label, created: result.created, winners: result.count, notified });
   } catch (error) {
     if (error instanceof SeasonNotOverError || error instanceof SeasonHasUnscoredFixturesError) {

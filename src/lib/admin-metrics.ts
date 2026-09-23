@@ -800,6 +800,39 @@ async function deletionsSection(range: DateRange): Promise<MetricSection> {
   };
 }
 
+const HOUR_MS = 60 * 60 * 1000;
+
+/**
+ * The metrics for a date range, reusing a recently saved result (MetricsSnapshot) instead of
+ * recounting whole tables on every view of the page or its exports — the counting itself only
+ * gets heavier as the app grows. A saved result is reused for up to an hour when the range
+ * includes today (still changing), a day otherwise; `refresh` forces a recount.
+ */
+export async function getAdminMetricsCached(
+  range: DateRange,
+  opts: { refresh?: boolean } = {},
+): Promise<{ sections: MetricSection[]; computedAt: Date }> {
+  const key = `${range.from.toISOString().slice(0, 10)}_${range.to.toISOString().slice(0, 10)}`;
+  const now = new Date();
+  const todayStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const maxAgeMs = range.to.getTime() >= todayStart ? HOUR_MS : 24 * HOUR_MS;
+
+  if (!opts.refresh) {
+    const saved = await prisma.metricsSnapshot.findUnique({ where: { key } });
+    if (saved && now.getTime() - saved.computedAt.getTime() < maxAgeMs) {
+      return { sections: saved.sections as unknown as MetricSection[], computedAt: saved.computedAt };
+    }
+  }
+  const sections = await getAdminMetrics(range);
+  const json = JSON.parse(JSON.stringify(sections));
+  await prisma.metricsSnapshot.upsert({
+    where: { key },
+    create: { key, sections: json, computedAt: now },
+    update: { sections: json, computedAt: now },
+  });
+  return { sections, computedAt: now };
+}
+
 export async function getAdminMetrics(range: DateRange): Promise<MetricSection[]> {
   const sections = await Promise.all([
     growthSection(range),

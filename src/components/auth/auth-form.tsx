@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
+import { TurnstileWidget, TURNSTILE_SITE_KEY } from "@/components/auth/turnstile-widget";
 
 const USERNAME_PATTERN = /^[a-z0-9_]{3,20}$/;
 
@@ -36,6 +37,17 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
   const [loading, setLoading] = useState<"password" | "magic" | "google" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Bot check for the email paths (Google has its own) — only when a Turnstile key is configured.
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [captchaKey, setCaptchaKey] = useState(0);
+  const captchaReady = !TURNSTILE_SITE_KEY || captchaToken !== null;
+  /** Tokens are single-use — get a fresh one after every attempt. */
+  function resetCaptcha() {
+    if (!TURNSTILE_SITE_KEY) return;
+    setCaptchaToken(null);
+    setCaptchaKey((k) => k + 1);
+  }
+  const captchaOption = captchaToken ? { captchaToken } : {};
 
   const consentRequired = mode === "signup";
   const usernameFormatValid = !consentRequired || USERNAME_PATTERN.test(username);
@@ -77,17 +89,19 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
 
     const { error } =
       mode === "login"
-        ? await supabase.auth.signInWithPassword({ email, password })
+        ? await supabase.auth.signInWithPassword({ email, password, options: captchaOption })
         : await supabase.auth.signUp({
             email,
             password,
             options: {
               emailRedirectTo: buildCallbackUrl(window.location.origin, next).toString(),
               data: signupMetadata(),
+              ...captchaOption,
             },
           });
 
     setLoading(null);
+    resetCaptcha();
     if (error) {
       setError(error.message);
       return;
@@ -116,9 +130,11 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
       options: {
         emailRedirectTo: buildCallbackUrl(window.location.origin, next).toString(),
         ...(consentRequired ? { data: signupMetadata() } : {}),
+        ...captchaOption,
       },
     });
     setLoading(null);
+    resetCaptcha();
     if (error) {
       setError(error.message);
       return;
@@ -235,7 +251,9 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
           </div>
         )}
 
-        <Button type="submit" disabled={loading !== null || !consentGiven}>
+        <TurnstileWidget key={captchaKey} onToken={setCaptchaToken} />
+
+        <Button type="submit" disabled={loading !== null || !consentGiven || !captchaReady}>
           {mode === "login" ? "Log in" : "Create account"}
         </Button>
       </form>
@@ -246,7 +264,7 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
         <Separator className="flex-1" />
       </div>
 
-      <Button variant="outline" onClick={handleMagicLink} disabled={loading !== null || !consentGiven}>
+      <Button variant="outline" onClick={handleMagicLink} disabled={loading !== null || !consentGiven || !captchaReady}>
         Send me a magic link
       </Button>
       <Button variant="outline" onClick={handleGoogle} disabled={loading !== null || !consentGiven}>

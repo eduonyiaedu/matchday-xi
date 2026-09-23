@@ -69,7 +69,21 @@ export async function GET(
     scored
       ? resultCard({ prediction, perfectXiCount, colors, layout, slotByIndex, format })
       : predictedLineupCard({ prediction, colors, layout, slotByIndex, format }),
-    { width, height, fonts },
+    {
+      width,
+      height,
+      fonts,
+      // ImageResponse's production default is "public, immutable, max-age=31536000" — wrong here,
+      // since this same URL shows the predicted-lineup card until the match is scored and the
+      // result card after (and again after a lineup correction). Cached on Vercel's CDN so a
+      // widely shared card is drawn once, not on every view: briefly before scoring (it's about to
+      // change), longer after, and served stale while it refreshes in the background.
+      headers: {
+        "cache-control": scored
+          ? "public, max-age=300, s-maxage=3600, stale-while-revalidate=86400"
+          : "public, max-age=60, s-maxage=60",
+      },
+    },
   );
 }
 

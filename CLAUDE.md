@@ -125,6 +125,15 @@ transaction even reads. Three fix patterns are established here, depending on wh
   `Season.exportEmailClaimedAt/exportEmailedAt` (lib/season-export.ts): an atomic claim
   (`updateMany` where not done and the claim is null *or older than ~10 min*, so a killed run's
   claim can be retaken), mark done only after the work succeeds, release the claim on failure.
+- **`sendPushToUsers` (lib/push.ts) queues, it doesn't send.** It writes one `PushOutbox` row per
+  device and returns true once queued (false only if the queue write itself failed); delivery
+  happens in `drainPushOutbox` — started in the background via `after()` right away, and again on
+  every 5-minute notify sweep — at most 25 devices at once, in batches claimed with `FOR UPDATE
+  SKIP LOCKED`. The queue handles everything callers used to: expired devices (410/404) are
+  deleted, other failures retried with back-off up to 5 times, anything older than 2 hours dropped
+  (a late "lock in 30 minutes" is worse than none). So a caller's `false` no longer means "a device
+  failed" — don't build retry logic on it beyond clearing its own dedup flag. Built for sends to
+  tens of thousands of fans, which used to be one `Promise.all` in one 60-second function.
 - **For anything that notifies users, keep "who gets what" separate from actually sending.** The
   founder's phone is the only real device with push enabled, and the database is shared with live
   verification — so calling a real sender in a test pings the founder. `lib/prize-notify.ts`
@@ -192,6 +201,16 @@ transaction even reads. Three fix patterns are established here, depending on wh
   2026-09-23: the global leaderboard resets each season, past seasons viewable via a dropdown) —
   recomputed at rollover and nightly by `recomputeCurrentSeasonTotals()` under an exclusive
   advisory lock that scoring/voiding take shared.
+- **A closed season is view-only** (founder's rule, 2026-09-23): once a newer season exists AND the
+  old season's winners are confirmed, its lineups can't be entered/corrected and its fixtures can't
+  be voided. The rule lives in one place — `fixtureSeasonStatus()` / `isSeasonClosed()` in
+  lib/seasons.ts — and `applyOfficialLineup` / `voidFixtureAndReversePoints` throw
+  `SeasonFrozenError` for a closed season (admin lineup route → 409; fixture sync skips it). A
+  previous season *not yet confirmed* stays correctable on purpose (otherwise one unscored
+  final-day match would make its prizes unconfirmable forever), but its points never touch
+  User.totalPoints, which then holds the new season's totals. Anything new that changes a
+  fixture's points must go through `fixtureSeasonStatus()` too. Closed seasons' final tables are
+  saved once to `SeasonStandingSnapshot` and read from there.
 - **"First time" rules must mean "first this season", not "first ever".** Club locks reset every
   season (founder decision 2026-09-23): at rollover `lib/new-season.ts` clears
   `favoriteTeamLockedAt`, pushes returning players, and Home asks "keep or change your club?"
@@ -218,6 +237,13 @@ transaction even reads. Three fix patterns are established here, depending on wh
   silently CREATES one** — so it can't be used to prove a login was deleted (it will "succeed" and
   leave a new stray auth user behind). Check deletion with `auth.admin.getUserById(id)` instead.
 
+- **`ImageResponse` (next/og) defaults to `cache-control: public, immutable, max-age=31536000` in
+  production** (and `no-store` in dev, so you won't see it locally). Any generated image whose URL
+  can show different content over time MUST pass its own `headers: { "cache-control": ... }`.
+  Confirmed real 2026-09-23: the share card URL shows the predicted lineup until the match is
+  scored and the result after, so players who'd opened it at lock time kept the stale pre-score
+  card from their browser cache. Fixed with short/longer `s-maxage` by state (cached on Vercel's
+  CDN, so a viral card is drawn once) plus `cache: "no-cache"` on the in-app fetch.
 - A long-running `next dev` process does **not** pick up a regenerated Prisma client after
   `prisma db push` + `generate` — it needs a hard restart, or every query referencing a new
   field/model throws a validation error that looks like a real bug but isn't.

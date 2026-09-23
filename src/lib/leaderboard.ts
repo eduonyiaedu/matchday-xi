@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { computeGlobalRank } from "@/lib/rank";
-import { listSeasons, seasonStandings } from "@/lib/seasons";
+import { ensureSeasonSnapshot, isSeasonClosed, listSeasons, seasonStandings } from "@/lib/seasons";
 
 export interface LeaderboardRow {
   rank: number;
@@ -17,8 +17,9 @@ const TOP_N = 100;
 /**
  * Everything the global and per-club leaderboard pages show, for the chosen season. The current
  * season reads the denormalized User.totalPoints (reset each season — see lib/seasons.ts), so it
- * stays a fast indexed query. A past season is computed from that season's scored predictions,
- * with a club's board meaning the fans who predicted for that club that season.
+ * stays a fast indexed query. A closed past season reads its saved final table; one still awaiting
+ * its winners is computed from its scored predictions. A club's board in a past season means the
+ * fans who predicted for that club that season.
  */
 export async function getLeaderboard(opts: {
   teamId?: string;
@@ -38,7 +39,38 @@ export async function getLeaderboard(opts: {
   let rows: LeaderboardRow[];
   let viewerRow: LeaderboardRow | null = null;
 
-  if (isPast && selected) {
+  if (isPast && selected && (await isSeasonClosed(selected, current))) {
+    // A closed season's final table is saved once and read from there (lib/seasons.ts).
+    await ensureSeasonSnapshot(selected);
+    const where = { seasonId: selected.id, ...(opts.teamId ? { teamId: opts.teamId } : {}) };
+    const top = await prisma.seasonStandingSnapshot.findMany({
+      where,
+      orderBy: { position: "asc" },
+      take: TOP_N,
+      include: { user: { select: { displayName: true, username: true } } },
+    });
+    const toRow = (s: (typeof top)[number], rank: number): LeaderboardRow => ({
+      rank,
+      userId: s.userId,
+      displayName: s.user.displayName,
+      username: s.user.username,
+      teamExternalId: externalIdByTeam.get(s.teamId) ?? 0,
+      totalPoints: s.totalPoints,
+      perfectXiCount: s.perfectXiCount,
+    });
+    rows = top.map((s, i) => toRow(s, i + 1));
+    if (viewer) {
+      const mine = await prisma.seasonStandingSnapshot.findUnique({
+        where: { seasonId_userId: { seasonId: selected.id, userId: viewer.id } },
+        include: { user: { select: { displayName: true, username: true } } },
+      });
+      if (mine && (!opts.teamId || mine.teamId === opts.teamId)) {
+        const rank = await prisma.seasonStandingSnapshot.count({ where: { ...where, position: { lte: mine.position } } });
+        viewerRow = toRow(mine, rank);
+      }
+    }
+  } else if (isPast && selected) {
+    // A previous season still awaiting its winners can still change, so it's computed live.
     const standings = await seasonStandings(selected, { teamId: opts.teamId });
     const all = standings.map((s, i) => ({
       rank: i + 1,

@@ -9,6 +9,7 @@ interface UserRow {
   email: string;
   displayName: string;
   isFlaggedDuplicate: boolean;
+  flagReason: string | null;
 }
 
 export function DuplicateFlagList({ users }: { users: UserRow[] }) {
@@ -16,7 +17,11 @@ export function DuplicateFlagList({ users }: { users: UserRow[] }) {
   const [pending, setPending] = useState<Set<string>>(new Set());
 
   function setFlag(userId: string, flagged: boolean) {
-    setRows((prev) => prev.map((u) => (u.id === userId ? { ...u, isFlaggedDuplicate: flagged } : u)));
+    setRows((prev) =>
+      prev.map((u) =>
+        u.id === userId ? { ...u, isFlaggedDuplicate: flagged, flagReason: flagged ? (u.flagReason ?? "Flagged by admin") : null } : u,
+      ),
+    );
   }
 
   async function toggle(userId: string, flagged: boolean) {
@@ -57,6 +62,7 @@ export function DuplicateFlagList({ users }: { users: UserRow[] }) {
           <div>
             <p>{u.displayName}</p>
             <p className="text-xs text-muted-foreground">{u.email}</p>
+            {u.isFlaggedDuplicate && u.flagReason && <p className="text-xs text-destructive">{u.flagReason}</p>}
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground">Flagged duplicate</span>
