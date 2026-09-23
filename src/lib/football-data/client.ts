@@ -147,12 +147,23 @@ class FootballDataClient {
     return data.matches;
   }
 
-  /** Current league table — free tier, confirmed working for the live current season. */
-  async getStandings(competitionCode: string): Promise<FootballDataStandingRow[]> {
-    const data = await this.request<{ standings: { type: string; table: FootballDataStandingRow[] }[] }>(
-      `/competitions/${competitionCode}/standings`,
-    );
-    return data.standings.find((s) => s.type === "TOTAL")?.table ?? [];
+  /**
+   * Current league table — free tier, confirmed working for the live current season. The same
+   * response also carries the current season's start/end dates (confirmed live, Sep 2026:
+   * `season: { startDate: "2026-08-21", endDate: "2027-05-30", ... }`), returned alongside so no
+   * extra request is needed to know when the season ends.
+   */
+  async getStandings(competitionCode: string): Promise<{
+    table: FootballDataStandingRow[];
+    season: { startDate: string; endDate: string } | null;
+  }> {
+    const data = await this.request<{
+      season?: { startDate?: string; endDate?: string };
+      standings: { type: string; table: FootballDataStandingRow[] }[];
+    }>(`/competitions/${competitionCode}/standings`);
+    const season =
+      data.season?.startDate && data.season?.endDate ? { startDate: data.season.startDate, endDate: data.season.endDate } : null;
+    return { table: data.standings.find((s) => s.type === "TOTAL")?.table ?? [], season };
   }
 
   /**

@@ -196,6 +196,11 @@ model Competition {
   /// football-data.org competition code, e.g. "PL", "FAC", "EFL"
   externalId String @unique
   name       String
+  /// The current season's dates as football-data.org reports them (refreshed by the standings
+  /// sync). Null until the first sync after these fields were added. Used to keep a private-league
+  /// creator from deleting their account mid-season (see lib/account-deletion.ts).
+  currentSeasonStartDate DateTime? @db.Date
+  currentSeasonEndDate   DateTime? @db.Date
 
   fixtures            Fixture[]
   restrictedByLeagues PrivateLeague[]

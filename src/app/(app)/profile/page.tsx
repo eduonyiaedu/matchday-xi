@@ -3,10 +3,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
 import { BackLink } from "@/components/ui/back-link";
 import { DeleteAccountButton } from "@/components/profile/delete-account-button";
+import { formatDeletionBlock, leagueCreatorDeletionBlock } from "@/lib/account-deletion";
 
 export default async function ProfilePage() {
   const user = await getOrCreateCurrentUser();
   if (!user) return null;
+  const deletionBlock = await leagueCreatorDeletionBlock(user.id);
 
   return (
     <div className="flex flex-col gap-4">
@@ -45,7 +47,11 @@ export default async function ProfilePage() {
             This permanently removes your login and personal details. Your account isn&apos;t
             deleted immediately — you have 30 days to change your mind.
           </p>
-          <DeleteAccountButton />
+          {deletionBlock ? (
+            <p className="rounded-lg bg-white/5 p-3">{formatDeletionBlock(deletionBlock)}</p>
+          ) : (
+            <DeleteAccountButton />
+          )}
         </CardContent>
       </Card>
     </div>

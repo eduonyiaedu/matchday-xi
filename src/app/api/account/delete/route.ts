@@ -3,6 +3,7 @@ import { getOrCreateCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { deleteAccountSchema } from "@/lib/validation";
 import { createClient } from "@/lib/supabase/server";
+import { formatDeletionBlock, leagueCreatorDeletionBlock } from "@/lib/account-deletion";
 
 export const runtime = "nodejs";
 
@@ -23,6 +24,11 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid input", issues: parsed.error.issues }, { status: 400 });
   }
+
+  // Server-side gate for the league-creator rule (the profile page also hides the button, but
+  // this is the authoritative check).
+  const block = await leagueCreatorDeletionBlock(user.id);
+  if (block) return NextResponse.json({ error: formatDeletionBlock(block) }, { status: 409 });
 
   const deletionScheduledAt = new Date(Date.now() + GRACE_PERIOD_DAYS * 24 * 60 * 60_000);
 

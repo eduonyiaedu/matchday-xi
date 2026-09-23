@@ -22,9 +22,14 @@ export async function renderBarChartPng(
   const fonts = await loadOgFonts();
   const plotHeight = height - 170;
   const max = Math.max(...series.map((s) => s.value), 1);
-  // Beyond ~24 bars, labels would overlap into unreadable noise — thin them out while every bar
-  // still renders, matching how a dense time-series chart is usually presented.
-  const labelEvery = series.length > 24 ? Math.ceil(series.length / 24) : 1;
+  // Dense series (e.g. "Sessions per day" over a 90-day range) used to render as garbage: a fixed
+  // 10px gap between 90 bars needs ~890px of gaps alone, more than the ~820px plot width, so every
+  // bar collapsed to zero width while the per-bar values and date labels piled on top of each
+  // other (confirmed by rendering one, 2026-09-23). So: the gap shrinks with bar count, per-bar
+  // values only show when there's room for them, and at most ~14 date labels are drawn.
+  const gap = series.length <= 24 ? 10 : series.length <= 60 ? 3 : 1;
+  const showValues = series.length <= 24;
+  const labelEvery = Math.max(1, Math.ceil(series.length / 14));
 
   const res = new ImageResponse(
     (
@@ -40,20 +45,33 @@ export async function renderBarChartPng(
         }}
       >
         <div style={{ display: "flex", fontSize: 26, fontWeight: 700, color: CHALK }}>{title}</div>
-        <div style={{ display: "flex", flex: 1, alignItems: "flex-end", gap: 10, marginTop: 24 }}>
-          {series.map((s) => {
+        <div style={{ display: "flex", flex: 1, alignItems: "flex-end", gap, marginTop: 24 }}>
+          {series.map((s, i) => {
             const barHeight = Math.max((s.value / max) * plotHeight, 3);
             return (
-              <div key={s.label} style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1 }}>
-                <div style={{ display: "flex", fontSize: 13, fontWeight: 600, color: CHALK, marginBottom: 6 }}>{s.value}</div>
-                <div style={{ display: "flex", width: "70%", height: barHeight, backgroundColor: GOLD, borderRadius: 6 }} />
+              <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1, minWidth: 0 }}>
+                {showValues && (
+                  <div style={{ display: "flex", fontSize: 13, fontWeight: 600, color: CHALK, marginBottom: 6 }}>{s.value}</div>
+                )}
+                <div
+                  style={{
+                    display: "flex",
+                    width: showValues ? "70%" : "100%",
+                    height: barHeight,
+                    backgroundColor: GOLD,
+                    borderRadius: showValues ? 6 : 1,
+                  }}
+                />
               </div>
             );
           })}
         </div>
-        <div style={{ display: "flex", marginTop: 10, gap: 10 }}>
+        <div style={{ display: "flex", marginTop: 10, gap }}>
           {series.map((s, i) => (
-            <div key={s.label} style={{ display: "flex", flex: 1, justifyContent: "center", fontSize: 10, color: MUTED, textAlign: "center" }}>
+            <div
+              key={i}
+              style={{ display: "flex", flex: 1, minWidth: 0, justifyContent: "center", fontSize: 10, color: MUTED, whiteSpace: "nowrap" }}
+            >
               {i % labelEvery === 0 ? s.label : ""}
             </div>
           ))}

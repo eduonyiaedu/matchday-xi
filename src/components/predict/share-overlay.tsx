@@ -79,8 +79,10 @@ export function ShareOverlay({ predictionId, onClose }: { predictionId: string; 
     }
     try {
       await navigator.share({ files: [file], title: "Matchday XI" });
-    } catch {
-      // User cancelled the share sheet — not an error.
+    } catch (error) {
+      // Cancelling the share sheet is fine (AbortError). Anything else (e.g. the browser refusing
+      // the share) used to fail silently with the button doing nothing — save the image instead.
+      if (!(error instanceof DOMException && error.name === "AbortError")) handleSave();
     }
   }
 

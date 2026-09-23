@@ -15,7 +15,7 @@ export async function syncStandingsAndScorers() {
     where: { externalId: COMPETITION_CODES.PREMIER_LEAGUE },
   });
 
-  const [standings, scorers] = await Promise.all([
+  const [{ table: standings, season }, scorers] = await Promise.all([
     footballDataClient.getStandings(COMPETITION_CODES.PREMIER_LEAGUE),
     // 500 is well above any realistic season-end goal-scorer count — confirmed live (Sep 2026)
     // that this endpoint accepts limits this high with no error, and that its `count` field is
@@ -35,6 +35,15 @@ export async function syncStandingsAndScorers() {
   // lock held and no timeout pressure. This is exactly what broke once the scorers limit was
   // raised from 20 to 500 above — confirmed live: a 90-scorer response blew the transaction's
   // 20s timeout inside the old per-row-upsert loop (P2028, ~20.1s elapsed).
+  // Season dates ride along on the standings response — kept current so account deletion can tell
+  // whether a private-league creator's season is still running (lib/account-deletion.ts).
+  if (season) {
+    await prisma.competition.update({
+      where: { id: competition.id },
+      data: { currentSeasonStartDate: new Date(season.startDate), currentSeasonEndDate: new Date(season.endDate) },
+    });
+  }
+
   const allTeamRefs = [...standings.map((s) => s.team), ...scorers.map((s) => s.team)];
   const uniqueTeamRefs = [...new Map(allTeamRefs.map((ref) => [ref.id, ref])).values()];
   const resolvedTeams = await Promise.all(uniqueTeamRefs.map((ref) => upsertOpponentTeam(ref)));

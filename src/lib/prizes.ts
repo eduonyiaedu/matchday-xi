@@ -58,51 +58,70 @@ export async function computeLiveMonthlyProgress(userId: string, favoriteTeamId:
 export async function computeMonthlyEligibility(monthKeyStr: string) {
   const { start, end, dayCount } = monthRangeUtc(monthKeyStr);
 
-  const users = await prisma.user.findMany({
-    where: { favoriteTeamId: { not: null } },
-    select: { id: true, favoriteTeamId: true },
+  // A handful of whole-month queries, not ~3 per user: this used to loop user by user, which at a
+  // few thousand users would outrun the daily-rollup route's 60s limit (~3 round trips each). The
+  // rules are unchanged — (a) logged in on every day of the month, (b) a global prediction for
+  // every non-voided fixture of their current favourite team that month (vacuously true if the
+  // team had none).
+  const [users, logins, monthFixtures] = await Promise.all([
+    prisma.user.findMany({ where: { favoriteTeamId: { not: null } }, select: { id: true, favoriteTeamId: true } }),
+    prisma.dailyLoginLog.groupBy({ by: ["userId"], where: { loginDate: { gte: start, lt: end } }, _count: { _all: true } }),
+    prisma.fixture.findMany({
+      where: { kickoffAt: { gte: start, lt: end }, status: { not: "VOIDED" } },
+      select: { id: true, homeTeamId: true, awayTeamId: true },
+    }),
+  ]);
+  const predictions = await prisma.prediction.findMany({
+    where: { privateLeagueId: null, fixtureId: { in: monthFixtures.map((f) => f.id) } },
+    select: { userId: true, fixtureId: true },
   });
 
-  let eligibleCount = 0;
-
-  for (const user of users) {
-    const loginCount = await prisma.dailyLoginLog.count({
-      where: { userId: user.id, loginDate: { gte: start, lt: end } },
-    });
-    const loggedInEveryDay = loginCount >= dayCount;
-
-    const teamFixtures = await prisma.fixture.findMany({
-      where: {
-        kickoffAt: { gte: start, lt: end },
-        status: { not: "VOIDED" },
-        OR: [{ homeTeamId: user.favoriteTeamId! }, { awayTeamId: user.favoriteTeamId! }],
-      },
-      select: { id: true },
-    });
-
-    let predictedEveryMatchday = true;
-    if (teamFixtures.length > 0) {
-      const predictedCount = await prisma.prediction.count({
-        where: {
-          userId: user.id,
-          privateLeagueId: null,
-          fixtureId: { in: teamFixtures.map((f) => f.id) },
-        },
-      });
-      predictedEveryMatchday = predictedCount >= teamFixtures.length;
+  const loginCountByUser = new Map(logins.map((l) => [l.userId, l._count._all]));
+  const fixtureIdsByTeam = new Map<string, Set<string>>();
+  for (const f of monthFixtures) {
+    for (const teamId of [f.homeTeamId, f.awayTeamId]) {
+      const ids = fixtureIdsByTeam.get(teamId) ?? new Set<string>();
+      ids.add(f.id);
+      fixtureIdsByTeam.set(teamId, ids);
     }
-
-    const isEligible = loggedInEveryDay && predictedEveryMatchday;
-    if (isEligible) eligibleCount += 1;
-
-    await prisma.monthlyPrizeEligibility.upsert({
-      where: { userId_month: { userId: user.id, month: monthKeyStr } },
-      update: { predictedEveryMatchday, loggedInEveryDay, isEligible, computedAt: new Date() },
-      create: { userId: user.id, month: monthKeyStr, predictedEveryMatchday, loggedInEveryDay, isEligible },
-    });
+  }
+  const predictedFixturesByUser = new Map<string, Set<string>>();
+  for (const p of predictions) {
+    const ids = predictedFixturesByUser.get(p.userId) ?? new Set<string>();
+    ids.add(p.fixtureId);
+    predictedFixturesByUser.set(p.userId, ids);
   }
 
-  return { month: monthKeyStr, usersChecked: users.length, eligibleCount };
+  const rows = users.map((user) => {
+    const loggedInEveryDay = (loginCountByUser.get(user.id) ?? 0) >= dayCount;
+    const teamFixtureIds = fixtureIdsByTeam.get(user.favoriteTeamId!) ?? new Set<string>();
+    const predicted = predictedFixturesByUser.get(user.id) ?? new Set<string>();
+    const predictedEveryMatchday = [...teamFixtureIds].every((id) => predicted.has(id));
+    return {
+      userId: user.id,
+      month: monthKeyStr,
+      loggedInEveryDay,
+      predictedEveryMatchday,
+      isEligible: loggedInEveryDay && predictedEveryMatchday,
+      computedAt: new Date(),
+    };
+  });
+
+  // Replace the month's rows wholesale (a retry must overwrite an earlier partial run). Locked so
+  // two overlapping rollup calls can't interleave their delete/insert and collide on the
+  // (userId, month) unique key.
+  await prisma.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"monthly-eligibility:" + monthKeyStr}))`;
+      await tx.monthlyPrizeEligibility.deleteMany({ where: { month: monthKeyStr } });
+      for (let i = 0; i < rows.length; i += 5_000) {
+        await tx.monthlyPrizeEligibility.createMany({ data: rows.slice(i, i + 5_000) });
+      }
+    },
+    { timeout: 30_000 },
+  );
+
+  return { month: monthKeyStr, usersChecked: users.length, eligibleCount: rows.filter((r) => r.isEligible).length };
 }
 
 /** Random draw among eligible, non-duplicate-flagged users (rulebook §9-§10). Idempotent per month. */
