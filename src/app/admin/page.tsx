@@ -16,10 +16,11 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
 
   const q = (await searchParams).q?.trim().slice(0, 100) ?? "";
 
-  const [unresolvedCount, users] = await Promise.all([
+  const [unresolvedCount, feedbackCount, users] = await Promise.all([
     // Anything not yet fully scored — lets the founder jump into manual entry early (e.g. a
     // known API outage) rather than only after the automated retries have given up.
     prisma.fixture.count({ where: { status: { in: ["LOCKED", "LINEUPS_FETCHED", "NEEDS_MANUAL_REVIEW"] } } }),
+    prisma.accountDeletionFeedback.count(),
     // Newest 30 by default; a search reaches any user, not just recent sign-ups — a duplicate
     // account is often discovered long after it was created.
     prisma.user.findMany({
@@ -47,7 +48,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
           <h1 className="text-2xl font-bold">Admin</h1>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-3">
           <Link href="/admin/lineups">
             <Card className="h-full hover:bg-white/5">
               <CardContent className="flex items-center justify-between pt-4">
@@ -85,6 +86,20 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
               <CardContent className="pt-4">
                 <p className="font-heading text-sm font-semibold uppercase">Sync options</p>
                 <p className="mt-1 text-xs text-muted-foreground">Manually trigger squad/fixture/standings syncs</p>
+              </CardContent>
+            </Card>
+          </Link>
+
+          <Link href="/admin/feedback">
+            <Card className="h-full hover:bg-white/5">
+              <CardContent className="flex items-center justify-between pt-4">
+                <div>
+                  <p className="font-heading text-sm font-semibold uppercase">Deletion feedback</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Why people deleted their accounts</p>
+                </div>
+                <Badge variant="secondary" className="text-base">
+                  {feedbackCount}
+                </Badge>
               </CardContent>
             </Card>
           </Link>

@@ -157,88 +157,142 @@ function footer() {
   );
 }
 
-// Markings mirror pitch-builder.tsx's pitch (outer border, halfway line, center circle, two
-// penalty boxes), scaled up for this much wider canvas rather than reused at literal pixel
-// values (which would render as a barely-visible dot on a card this size). Positioned with fixed
-// marginLeft/marginTop offsets instead of `transform: translate(...)`, matching this file's own
-// existing technique for the player dots below — Satori's transform support doesn't reliably
-// match a real browser's.
+const LINE = "2px solid rgba(245,243,236,0.24)";
+const SPOT = "rgba(245,243,236,0.45)";
+
+// Marking sizes (px), in rough real-pitch proportion to the story card's ~900 x ~1000 pitch.
+// "long" runs along the goal line, "depth" runs out from it.
+const M = { circle: 180, boxLong: 420, boxDepth: 140, sixLong: 200, sixDepth: 54, spotDist: 94, arcRadius: 84, corner: 36 };
+
+/**
+ * Full pitch markings for the story card: touchlines, halfway line, centre circle + spot, and at
+ * each end the penalty area, six-yard box, penalty spot, penalty arc (the part of the circle
+ * round the spot that falls outside the box) and corner arcs. Everything is centred with fixed
+ * marginLeft/marginTop offsets rather than `transform: translate(...)` — Satori's transform
+ * support doesn't reliably match a browser's — and arcs are cut to shape with `overflow: hidden`
+ * wrappers rather than clip-path, for the same reason. Children are laid out inside the touchline
+ * box itself, whose own overflow clipping turns the corner circles into quarter arcs.
+ */
 function pitchMarkings() {
-  return [
+  const ends = ["top", "bottom"] as const;
+
+  // Places an element against one goal line, centred along it, `offset` px out from the line.
+  const atEnd = (end: "top" | "bottom", offset: number, long: number, depth: number): React.CSSProperties => ({
+    left: "50%",
+    marginLeft: -long / 2,
+    width: long,
+    height: depth,
+    [end]: offset,
+  });
+
+  // Border on every side except the one lying on the goal line.
+  const openBox = (end: "top" | "bottom"): React.CSSProperties => ({
+    borderLeft: LINE,
+    borderRight: LINE,
+    ...(end === "top" ? { borderBottom: LINE } : { borderTop: LINE }),
+  });
+
+  const arcVisible = M.spotDist + M.arcRadius - M.boxDepth;
+  const arcInset = M.spotDist - M.arcRadius - (M.boxDepth + 2);
+
+  return (
     <div
-      key="outer"
+      key="markings"
       style={{
         position: "absolute",
         top: 28,
         left: 28,
         right: 28,
         bottom: 28,
-        borderRadius: 8,
-        border: "2px solid rgba(245,243,236,0.22)",
+        display: "flex",
+        overflow: "hidden",
+        borderRadius: 6,
+        border: LINE,
       }}
-    />,
-    <div
-      key="halfway"
-      style={{
-        position: "absolute",
-        top: "50%",
-        left: 28,
-        right: 28,
-        height: 2,
-        backgroundColor: "rgba(245,243,236,0.22)",
-      }}
-    />,
-    <div
-      key="circle"
-      style={{
-        position: "absolute",
-        top: "50%",
-        left: "50%",
-        marginLeft: -90,
-        marginTop: -90,
-        width: 180,
-        height: 180,
-        borderRadius: "50%",
-        border: "2px solid rgba(245,243,236,0.22)",
-      }}
-    />,
-    <div
-      key="box-top"
-      style={{
-        position: "absolute",
-        top: 28,
-        left: "50%",
-        marginLeft: -210,
-        width: 420,
-        height: 140,
-        borderLeft: "2px solid rgba(245,243,236,0.22)",
-        borderRight: "2px solid rgba(245,243,236,0.22)",
-        borderBottom: "2px solid rgba(245,243,236,0.22)",
-      }}
-    />,
-    <div
-      key="box-bottom"
-      style={{
-        position: "absolute",
-        bottom: 28,
-        left: "50%",
-        marginLeft: -210,
-        width: 420,
-        height: 140,
-        borderLeft: "2px solid rgba(245,243,236,0.22)",
-        borderRight: "2px solid rgba(245,243,236,0.22)",
-        borderTop: "2px solid rgba(245,243,236,0.22)",
-      }}
-    />,
-  ];
+    >
+      {/* Halfway line */}
+      <div
+        style={{ position: "absolute", top: "50%", marginTop: -1, left: 0, right: 0, height: 2, backgroundColor: "rgba(245,243,236,0.24)" }}
+      />
+      {/* Centre circle and spot */}
+      <div
+        style={{
+          position: "absolute",
+          top: "50%",
+          left: "50%",
+          marginTop: -M.circle / 2,
+          marginLeft: -M.circle / 2,
+          width: M.circle,
+          height: M.circle,
+          borderRadius: 999,
+          border: LINE,
+        }}
+      />
+      <div
+        style={{ position: "absolute", top: "50%", left: "50%", marginTop: -5, marginLeft: -5, width: 10, height: 10, borderRadius: 999, backgroundColor: SPOT }}
+      />
+
+      {ends.flatMap((end) => [
+        // Penalty area and six-yard box
+        <div key={`box-${end}`} style={{ position: "absolute", ...atEnd(end, 0, M.boxLong, M.boxDepth), ...openBox(end) }} />,
+        <div key={`six-${end}`} style={{ position: "absolute", ...atEnd(end, 0, M.sixLong, M.sixDepth), ...openBox(end) }} />,
+        // Penalty spot
+        <div
+          key={`spot-${end}`}
+          style={{ position: "absolute", ...atEnd(end, M.spotDist - 4, 8, 8), borderRadius: 999, backgroundColor: SPOT }}
+        />,
+        // Penalty arc: a window just outside the box, showing only that slice of the spot's circle
+        <div
+          key={`arc-${end}`}
+          style={{ position: "absolute", display: "flex", overflow: "hidden", ...atEnd(end, M.boxDepth + 2, M.arcRadius * 2, arcVisible) }}
+        >
+          <div
+            style={{
+              position: "absolute",
+              left: 0,
+              [end]: arcInset,
+              width: M.arcRadius * 2,
+              height: M.arcRadius * 2,
+              borderRadius: 999,
+              border: LINE,
+            }}
+          />
+        </div>,
+      ])}
+
+      {/* Corner arcs — circles centred on each corner, clipped to quarters by this box */}
+      {(
+        [
+          { top: -M.corner / 2, left: -M.corner / 2 },
+          { top: -M.corner / 2, right: -M.corner / 2 },
+          { bottom: -M.corner / 2, left: -M.corner / 2 },
+          { bottom: -M.corner / 2, right: -M.corner / 2 },
+        ] as React.CSSProperties[]
+      ).map((corner, i) => (
+        <div
+          key={`corner-${i}`}
+          style={{ position: "absolute", ...corner, width: M.corner, height: M.corner, borderRadius: 999, border: LINE }}
+        />
+      ))}
+    </div>
+  );
 }
 
+interface DotStyle {
+  number: string | number;
+  name: string;
+  fill: string;
+  numberColor: string;
+  nameColor: string;
+}
+
+/** The XI on a full pitch — the story card's diagram. */
 function pitchDiagram({
   layout,
-  renderDot,
+  dot,
 }: {
   layout: { slotIndex: number; top: string; left: string }[];
-  renderDot: (slotIndex: number) => React.ReactNode;
+  dot: (slotIndex: number) => DotStyle;
 }) {
   return (
     <div
@@ -254,46 +308,104 @@ function pitchDiagram({
       }}
     >
       {pitchMarkings()}
-      {layout.map((pos) => (
-        <div
-          key={pos.slotIndex}
-          style={{
-            position: "absolute",
-            display: "flex",
-            top: pos.top,
-            left: pos.left,
-          }}
-        >
-          {renderDot(pos.slotIndex)}
-        </div>
-      ))}
+      {layout.map((pos) => {
+        const d = dot(pos.slotIndex);
+        return (
+          <div key={pos.slotIndex} style={{ position: "absolute", display: "flex", top: pos.top, left: pos.left }}>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                marginLeft: -65,
+                marginTop: -46,
+                width: 130,
+              }}
+            >
+              <div
+                style={{
+                  width: 52,
+                  height: 52,
+                  borderRadius: 999,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: d.fill,
+                  color: d.numberColor,
+                  fontSize: 20,
+                  fontWeight: 700,
+                }}
+              >
+                {d.number}
+              </div>
+              <span
+                style={{
+                  display: "flex",
+                  marginTop: 8,
+                  fontSize: 19,
+                  fontWeight: 600,
+                  color: d.nameColor,
+                  textAlign: "center",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {d.name}
+              </span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * The square card's layout — a compact list of the XI rather than a pitch (a founder decision,
+ * reconfirmed 2026-09-23: square cards stay a plain list; only story cards get the pitch).
+ */
+function lineupList({
+  layout,
+  dot,
+}: {
+  layout: { slotIndex: number }[];
+  dot: (slotIndex: number) => DotStyle;
+}) {
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", width: "100%", gap: 20, marginTop: 40 }}>
+      {layout.map((pos) => {
+        const d = dot(pos.slotIndex);
+        return (
+          <div key={pos.slotIndex} style={{ display: "flex", alignItems: "center", width: 320, height: 44 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <div
+                style={{
+                  display: "flex",
+                  width: 38,
+                  height: 38,
+                  borderRadius: 999,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: d.fill,
+                  fontSize: 14,
+                  fontWeight: 700,
+                  color: d.numberColor,
+                }}
+              >
+                {d.number}
+              </div>
+              <span style={{ display: "flex", fontSize: 22, fontWeight: 600, color: d.nameColor }}>{d.name}</span>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
 type SlotMap = Map<number, PredictionWithRelations["slots"][number]>;
 
-/**
- * The square format has no room for the full pitch diagram, so the XI is shown as a compact
- * text list instead of being dropped entirely — "displayed" (the diagram) for the tall story
- * format, "listed" (this) for the square one, matching the two destinations they're meant for.
- */
-function lineupList({
-  layout,
-  renderItem,
-}: {
-  layout: { slotIndex: number }[];
-  renderItem: (slotIndex: number) => React.ReactNode;
-}) {
-  return (
-    <div style={{ display: "flex", flexWrap: "wrap", width: "100%", gap: 20, marginTop: 40 }}>
-      {layout.map((pos) => (
-        <div key={pos.slotIndex} style={{ display: "flex", alignItems: "center", width: 320, height: 44 }}>
-          {renderItem(pos.slotIndex)}
-        </div>
-      ))}
-    </div>
-  );
+function surname(name: string | undefined) {
+  return name ? name.split(" ").slice(-1)[0].toUpperCase() : "";
 }
 
 function resultCard({
@@ -360,88 +472,20 @@ function resultCard({
     </div>,
 
     <div key="diagram" style={{ display: "flex", width: "100%", flex: format === "story" ? 1 : 0 }}>
-      {format === "story"
-        ? pitchDiagram({
-            layout,
-            renderDot: (slotIndex) => {
-              const slot = slotByIndex.get(slotIndex);
-              const player = slot?.squadPlayer;
-              const correct = slot?.isCorrect === true;
-              return (
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    marginLeft: -65,
-                    marginTop: -46,
-                    width: 130,
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 52,
-                      height: 52,
-                      borderRadius: 999,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      backgroundColor: correct ? GOLD : "rgba(245,243,236,0.18)",
-                      fontSize: 20,
-                      fontWeight: 700,
-                      color: correct ? "#0B1F17" : MUTED,
-                    }}
-                  >
-                    {player?.shirtNumber ?? ""}
-                  </div>
-                  <span
-                    style={{
-                      display: "flex",
-                      marginTop: 8,
-                      fontSize: 19,
-                      fontWeight: 600,
-                      color: correct ? CHALK : MUTED,
-                      textAlign: "center",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {player ? player.name.split(" ").slice(-1)[0].toUpperCase() : ""}
-                  </span>
-                </div>
-              );
-            },
-          })
-        : lineupList({
-            layout,
-            renderItem: (slotIndex) => {
-              const slot = slotByIndex.get(slotIndex);
-              const player = slot?.squadPlayer;
-              const correct = slot?.isCorrect === true;
-              return (
-                <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                  <div
-                    style={{
-                      display: "flex",
-                      width: 38,
-                      height: 38,
-                      borderRadius: 999,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      backgroundColor: correct ? GOLD : "rgba(245,243,236,0.14)",
-                      fontSize: 14,
-                      fontWeight: 700,
-                      color: correct ? "#0B1F17" : MUTED,
-                    }}
-                  >
-                    {player?.shirtNumber ?? ""}
-                  </div>
-                  <span style={{ display: "flex", fontSize: 22, fontWeight: 600, color: correct ? CHALK : MUTED }}>
-                    {player ? player.name.split(" ").slice(-1)[0].toUpperCase() : ""}
-                  </span>
-                </div>
-              );
-            },
-          })}
+      {(format === "story" ? pitchDiagram : lineupList)({
+        layout,
+        dot: (slotIndex) => {
+          const slot = slotByIndex.get(slotIndex);
+          const correct = slot?.isCorrect === true;
+          return {
+            number: slot?.squadPlayer.shirtNumber ?? "",
+            name: surname(slot?.squadPlayer.name),
+            fill: correct ? GOLD : format === "story" ? "rgba(245,243,236,0.18)" : "rgba(245,243,236,0.14)",
+            numberColor: correct ? "#0B1F17" : MUTED,
+            nameColor: correct ? CHALK : MUTED,
+          };
+        },
+      })}
     </div>,
 
     <div key="spacer" style={{ display: "flex", flex: format === "story" ? 0 : 1 }} />,
@@ -514,84 +558,19 @@ function predictedLineupCard({
     </div>,
 
     <div key="diagram" style={{ display: "flex", width: "100%", flex: format === "story" ? 1 : 0 }}>
-      {format === "story"
-        ? pitchDiagram({
-            layout,
-            renderDot: (slotIndex) => {
-              const player = slotByIndex.get(slotIndex)?.squadPlayer;
-              return (
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    marginLeft: -65,
-                    marginTop: -46,
-                    width: 130,
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 52,
-                      height: 52,
-                      borderRadius: 999,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      backgroundColor: colors.primary,
-                      color: colors.secondary,
-                      fontSize: 20,
-                      fontWeight: 700,
-                    }}
-                  >
-                    {player?.shirtNumber ?? ""}
-                  </div>
-                  <span
-                    style={{
-                      display: "flex",
-                      marginTop: 8,
-                      fontSize: 19,
-                      fontWeight: 600,
-                      color: CHALK,
-                      textAlign: "center",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {player ? player.name.split(" ").slice(-1)[0].toUpperCase() : ""}
-                  </span>
-                </div>
-              );
-            },
-          })
-        : lineupList({
-            layout,
-            renderItem: (slotIndex) => {
-              const player = slotByIndex.get(slotIndex)?.squadPlayer;
-              return (
-                <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                  <div
-                    style={{
-                      display: "flex",
-                      width: 38,
-                      height: 38,
-                      borderRadius: 999,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      backgroundColor: colors.primary,
-                      color: colors.secondary,
-                      fontSize: 14,
-                      fontWeight: 700,
-                    }}
-                  >
-                    {player?.shirtNumber ?? ""}
-                  </div>
-                  <span style={{ display: "flex", fontSize: 22, fontWeight: 600, color: CHALK }}>
-                    {player ? player.name.split(" ").slice(-1)[0].toUpperCase() : ""}
-                  </span>
-                </div>
-              );
-            },
-          })}
+      {(format === "story" ? pitchDiagram : lineupList)({
+        layout,
+        dot: (slotIndex) => {
+          const player = slotByIndex.get(slotIndex)?.squadPlayer;
+          return {
+            number: player?.shirtNumber ?? "",
+            name: surname(player?.name),
+            fill: colors.primary,
+            numberColor: colors.secondary,
+            nameColor: CHALK,
+          };
+        },
+      })}
     </div>,
 
     <div key="spacer" style={{ display: "flex", flex: format === "story" ? 0 : 1 }} />,
