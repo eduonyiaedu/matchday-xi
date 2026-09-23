@@ -4,6 +4,7 @@ import { computeLiveMonthlyProgress } from "@/lib/prizes";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ComingSoonCard } from "@/components/prizes/coming-soon-card";
+import { RanksTabs } from "@/components/leaderboard/ranks-tabs";
 
 export default async function PrizesPage() {
   const user = await getOrCreateCurrentUser();
@@ -20,8 +21,9 @@ export default async function PrizesPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="font-heading text-2xl font-semibold uppercase">Prizes</h1>
+      <div className="flex flex-col gap-4">
+        <h1 className="font-heading text-2xl font-semibold uppercase">Ranks</h1>
+        <RanksTabs active="prizes" />
         <p className="text-sm text-muted-foreground">
           Free to enter — no purchase required for anything below.
         </p>

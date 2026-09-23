@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { cn } from "@/lib/utils";
+import { UNDERLINE_TAB_BAR, underlineTabClass } from "@/components/ui/underline-tabs";
 
 /** Shared sub-nav for the two fixtures views — history lives under fixtures rather than its own
  * top-level tab, so this is the only thing distinguishing the two pages' headers. */
@@ -11,16 +11,9 @@ export function FixturesTabs({ active }: { active: "upcoming" | "history" | "tab
   ] as const;
 
   return (
-    <div className="flex gap-1 border-b border-white/8">
+    <div className={UNDERLINE_TAB_BAR}>
       {tabs.map((tab) => (
-        <Link
-          key={tab.key}
-          href={tab.href}
-          className={cn(
-            "border-b-2 px-3 py-2 font-heading text-xs tracking-[0.1em] uppercase",
-            active === tab.key ? "border-club text-club" : "border-transparent text-muted-foreground hover:text-chalk",
-          )}
-        >
+        <Link key={tab.key} href={tab.href} className={underlineTabClass(active === tab.key)}>
           {tab.label}
         </Link>
       ))}

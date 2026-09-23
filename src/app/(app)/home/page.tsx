@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { LocalTime } from "@/components/ui/local-time";
 import { TierDisc, tierFromPerfectXiCount } from "@/components/leaderboard/tier-disc";
 import { HomeAvatar } from "@/components/home/home-avatar";
+import { HeroPitchLines } from "@/components/home/hero-pitch-lines";
 import { LogoutButton } from "@/components/layout/logout-button";
 import { PushOptIn } from "@/components/push/push-opt-in";
 import { computeGlobalRank, computeLeagueStandings } from "@/lib/rank";
@@ -107,8 +108,7 @@ export default async function HomePage() {
           <>
             <div className="relative h-37 turf">
               <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_0%,rgba(245,243,236,0.16),rgba(11,31,23,0)_62%)]" />
-              <div className="absolute inset-3.5 rounded-sm border border-white/22" />
-              <div className="absolute top-1/2 left-1/2 size-14 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/22" />
+              <HeroPitchLines />
               <span className="absolute top-3 right-3.5 rounded-full bg-pitch/72 px-2 py-1 font-mono text-[10px] tracking-[0.08em] text-gold">
                 {nextFixtureWindowOpen ? (
                   <LocalTime iso={nextFixture.lockAt.toISOString()} />

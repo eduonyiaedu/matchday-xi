@@ -6,7 +6,7 @@ import { formatCalendarDay, leagueWindowEndExclusive } from "@/lib/league-window
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { LeagueSectionTabs } from "@/components/leagues/league-section-tabs";
 import { LocalTime } from "@/components/ui/local-time";
 import { JoinLeagueButton } from "@/components/leagues/join-league-button";
 import { MembershipRequests } from "@/components/leagues/membership-requests";
@@ -119,13 +119,9 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
       )}
 
       {isApproved && (
-        <Tabs defaultValue="fixtures">
-          <TabsList>
-            <TabsTrigger value="fixtures">Fixtures</TabsTrigger>
-            <TabsTrigger value="history">History</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="fixtures">
+        <LeagueSectionTabs
+          fixtures={
+          <>
             {fixtures.length === 0 && (
               <p className="text-sm text-muted-foreground">No eligible fixtures right now.</p>
             )}
@@ -175,9 +171,10 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
                 );
               })}
             </div>
-          </TabsContent>
-
-          <TabsContent value="history">
+          </>
+          }
+          history={
+          <>
             {history.length === 0 && (
               <Card>
                 <CardContent className="py-7 text-center text-sm text-muted-foreground">
@@ -218,8 +215,9 @@ export default async function LeagueDetailPage({ params }: { params: Promise<{ i
                 </Link>
               ))}
             </div>
-          </TabsContent>
-        </Tabs>
+          </>
+          }
+        />
       )}
     </div>
   );

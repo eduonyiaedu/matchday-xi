@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { LeaderboardTable } from "@/components/leaderboard/leaderboard-table";
 import { ClubFilterSelect } from "@/components/leaderboard/club-filter-select";
+import { RanksTabs } from "@/components/leaderboard/ranks-tabs";
 import { computeGlobalRank } from "@/lib/rank";
 
 export default async function GlobalLeaderboardPage() {
@@ -37,7 +38,8 @@ export default async function GlobalLeaderboardPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="font-heading text-2xl font-semibold uppercase">Leaderboard</h1>
+      <h1 className="font-heading text-2xl font-semibold uppercase">Ranks</h1>
+      <RanksTabs active="leaderboard" />
       <ClubFilterSelect value="global" teams={teams} />
       <LeaderboardTable
         rows={users.map((u, i) => ({
