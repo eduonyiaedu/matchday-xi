@@ -64,9 +64,16 @@ export async function notifyMonthlyDrawIfNeeded(drawId: string): Promise<boolean
     data: { winnerNotifiedAt: new Date() },
   });
   if (count === 0) return false;
-  const draw = await prisma.monthlyPrizeDraw.findUniqueOrThrow({ where: { id: drawId } });
-  // Queued all-or-nothing; if the queue couldn't be written, release the claim so it's retried.
-  if (!(await queuePushes(await planMonthlyDrawPushes(draw), "broadcast"))) {
+  // Queued all-or-nothing. If planning throws or nothing could be queued, release the claim so
+  // the next run retries — never leave it marked "notified" for an announcement that never went.
+  let queued = false;
+  try {
+    const draw = await prisma.monthlyPrizeDraw.findUniqueOrThrow({ where: { id: drawId } });
+    queued = await queuePushes(await planMonthlyDrawPushes(draw), "broadcast");
+  } catch (error) {
+    console.error("[prize-notify] monthly draw announcement failed:", error);
+  }
+  if (!queued) {
     await prisma.monthlyPrizeDraw.update({ where: { id: drawId }, data: { winnerNotifiedAt: null } });
     return false;
   }
@@ -103,17 +110,24 @@ export async function notifySeasonPrizesIfNeeded(competitionId: string, season: 
     data: { notifiedAt: new Date() },
   });
   if (count === 0) return false;
-  const prizes = await prisma.seasonPrize.findMany({
-    where: { competitionId, season },
-    orderBy: { place: "asc" },
-    include: { user: { select: { displayName: true } } },
-  });
-  const plan = await planSeasonPrizePushes(
-    season,
-    prizes.map((p) => ({ place: p.place, userId: p.userId, displayName: p.user.displayName })),
-  );
-  // Queued all-or-nothing; if the queue couldn't be written, release the claim so it's retried.
-  if (!(await queuePushes(plan, "broadcast"))) {
+  // Queued all-or-nothing. If planning throws or nothing could be queued, release the claim —
+  // /admin/prizes then shows "not notified yet" instead of claiming an announcement that never went.
+  let queued = false;
+  try {
+    const prizes = await prisma.seasonPrize.findMany({
+      where: { competitionId, season },
+      orderBy: { place: "asc" },
+      include: { user: { select: { displayName: true } } },
+    });
+    const plan = await planSeasonPrizePushes(
+      season,
+      prizes.map((p) => ({ place: p.place, userId: p.userId, displayName: p.user.displayName })),
+    );
+    queued = await queuePushes(plan, "broadcast");
+  } catch (error) {
+    console.error("[prize-notify] season prize announcement failed:", error);
+  }
+  if (!queued) {
     await prisma.seasonPrize.updateMany({ where: { competitionId, season }, data: { notifiedAt: null } });
     return false;
   }

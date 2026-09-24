@@ -44,7 +44,12 @@ function loadScript(): Promise<void> {
     script.src = SCRIPT_SRC;
     script.async = true;
     script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Couldn't load the CAPTCHA"));
+    script.onerror = () => {
+      // Forget the failed attempt so "Try again" really reloads the script, not this rejection.
+      scriptPromise = null;
+      script.remove();
+      reject(new Error("Couldn't load the CAPTCHA"));
+    };
     document.head.appendChild(script);
   });
   return scriptPromise;
@@ -77,7 +82,11 @@ export function TurnstileWidget({ siteKey, onToken }: { siteKey: string; onToken
         widgetId = window.turnstile.render(container.current, {
           sitekey: siteKey,
           theme: "dark",
-          callback: (token: string) => onToken(token),
+          callback: (token: string) => {
+            onToken(token);
+            // Turnstile retries on its own after an error — clear the message once it succeeds.
+            if (!cancelled) setFailed(false);
+          },
           "expired-callback": () => onToken(null),
           "error-callback": fail,
         });

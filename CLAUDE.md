@@ -27,6 +27,13 @@ declaring anything done, and don't make destructive or scope-expanding calls wit
 - **cron-job.org's API key is never stored anywhere in this repo or in Claude's memory** — it's
   provided fresh in chat by the founder each time a cron job needs to be added or changed there.
 - **`JobRun.details`, not `.error`** — an easy mistake when querying job failures ad hoc.
+- **A cron route that runs several jobs must let each finish independently and always answer
+  200** — `Promise.allSettled`, never `Promise.all` (see `api/cron/lock-sweep/route.ts`, which runs
+  LOCK_SWEEP, NOTIFY_SWEEP and SEASON_EXPORT). Each job records its own success/failure on its
+  `JobRun`, which is what /admin/jobs and the audits watch. With `Promise.all`, one job throwing
+  returned a 500 immediately — cutting the others short (the platform can freeze in-flight work
+  once the response is sent) and risking cron-job.org counting failures towards disabling the
+  5-minute schedule every time-critical job depends on. Confirmed by review 2026-09-24.
 
 ## The recurring "check the site for any other issues" audit
 
@@ -138,10 +145,13 @@ transaction even reads. Three fix patterns are established here, depending on wh
   by priority (RETURNING doesn't keep the subquery's order — sort in code), 25 devices at once,
   10s timeout per device, delivered rows deleted as it goes (a killed run re-sends at most a
   handful). Expired devices (410/404) are deleted; failures retry with back-off up to 5 times.
-  **Only the sweep's drain (`removeGivenUp`) removes pushes that failed 5 times, and it fails the
-  NOTIFY_SWEEP job run when it does** — that's how a broken push setup becomes visible on
-  /admin/jobs instead of every notification vanishing silently. Background drains must not remove
-  them. Built for sends to tens of thousands of fans, which used to be one `Promise.all` in one
+  **Only the sweep's drain (`removeGivenUp`) handles pushes that failed 5 times, and background
+  drains must not touch them.** If only a few devices are behind them (≤ max(2, 10% of all
+  subscriptions)) those devices are just dead — e.g. subscribed under a different VAPID key pair,
+  like a localhost subscription in the shared database — and are deleted quietly, like an expired
+  one. Only widespread failures (most likely the push setup itself is broken) fail the
+  NOTIFY_SWEEP job run, and then no devices are deleted — removing everyone's would be
+  destructive. One dead phone must never turn into a permanent alarm. Built for sends to tens of thousands of fans, which used to be one `Promise.all` in one
   60-second function.
 - **For anything that notifies users, keep "who gets what" separate from actually sending.** The
   founder's phone is the only real device with push enabled, and the database is shared with live

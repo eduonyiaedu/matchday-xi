@@ -390,8 +390,12 @@ export async function advanceSeasonExports(budgetMs = 40_000, opts: { rowsPerFil
     // here rather than leaving the founder waiting on an email that will never come.
     if (exportStatus === "READY") {
       const season = await seasonInfoById(id);
-      const sent = await emailSeasonExportLinks(season);
-      results.push({ season: season.label, status: sent ? "links emailed" : "failed: links email not sent", files: 0 });
+      const email = await emailSeasonExportLinks(season, { onlyIfWanted: true });
+      results.push({
+        season: season.label,
+        status: email === "failed" ? "failed: links email not sent" : email === "sent" ? "links emailed" : "links email already in hand",
+        files: 0,
+      });
       continue;
     }
 
@@ -470,8 +474,12 @@ export async function advanceSeasonExports(budgetMs = 40_000, opts: { rowsPerFil
         if (old !== cursor.requestId) await removeFolder(`seasons/${season.label}/${old}`);
       }
       // If this send fails, exportEmailWanted stays set and the next sweep retries it (above).
-      const emailed = row.exportEmailWanted ? await emailSeasonExportLinks(season) : true;
-      results.push({ season: season.label, status: emailed ? "ready" : "failed: ready, but the links email wasn't sent", files: cursor.files.length });
+      const email = await emailSeasonExportLinks(season, { onlyIfWanted: true });
+      results.push({
+        season: season.label,
+        status: email === "failed" ? "failed: ready, but the links email wasn't sent" : "ready",
+        files: cursor.files.length,
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`[season-export] ${season.label} build failed:`, error);
@@ -503,17 +511,25 @@ export async function seasonExportLinks(files: ExportFile[], seasonLabel: string
  * with `email` finishes, or on demand from /admin/prizes. Claimed atomically on
  * Season.exportEmailClaimedAt (a stale claim from a killed run is retaken); exportEmailedAt is set
  * only once the send has actually gone. A failed send releases the claim.
+ *
+ * `onlyIfWanted` (the automatic paths): send only while exportEmailWanted is still set, checked in
+ * the same atomic claim — so two automatic runs that overlap can't both send. Returns "busy" when
+ * another run holds the claim or nothing's pending — not a failure.
  */
-export async function emailSeasonExportLinks(season: SeasonInfo): Promise<boolean> {
+export async function emailSeasonExportLinks(
+  season: SeasonInfo,
+  opts: { onlyIfWanted?: boolean } = {},
+): Promise<"sent" | "busy" | "failed"> {
   const { count } = await prisma.season.updateMany({
     where: {
       id: season.id,
       exportStatus: "READY",
+      ...(opts.onlyIfWanted ? { exportEmailWanted: true } : {}),
       OR: [{ exportEmailClaimedAt: null }, { exportEmailClaimedAt: { lt: new Date(Date.now() - STALE_EMAIL_CLAIM_MS) } }],
     },
     data: { exportEmailClaimedAt: new Date() },
   });
-  if (count === 0) return false;
+  if (count === 0) return "busy";
   try {
     const row = await prisma.season.findUniqueOrThrow({ where: { id: season.id } });
     const links = await seasonExportLinks((row.exportFiles as unknown as ExportFile[]) ?? [], season.label);
@@ -523,10 +539,10 @@ export async function emailSeasonExportLinks(season: SeasonInfo): Promise<boolea
       where: { id: season.id },
       data: { exportEmailedAt: new Date(), exportEmailClaimedAt: null, exportEmailWanted: false },
     });
-    return true;
+    return "sent";
   } catch (error) {
     console.error(`[season-export] ${season.label} export email failed:`, error);
     await prisma.season.update({ where: { id: season.id }, data: { exportEmailClaimedAt: null } });
-    return false;
+    return "failed";
   }
 }

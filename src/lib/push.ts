@@ -140,18 +140,35 @@ async function runWithConcurrency<T>(items: T[], limit: number, fn: (item: T) =>
  * Delivered rows are deleted as it goes, so a run cut off mid-batch re-sends at most a handful.
  * Devices that come back expired (410/404) are deleted; failures are retried once their claim
  * goes stale (a back-off). Pushes that failed MAX_ATTEMPTS times are never claimed again; only
- * the 5-minute notify sweep passes `removeGivenUp`, deleting and counting them (`gaveUp`) so it can
- * fail its job run — a broken setup (e.g. rotated VAPID keys) can't silently lose every
- * notification, and background runs can't delete them before the sweep has seen them.
+ * the 5-minute notify sweep passes `removeGivenUp`, which either removes the few dead devices
+ * behind them (`deadDevicesRemoved`) or — when failures are widespread — counts them (`gaveUp`)
+ * so the sweep fails its job run: a broken setup can't silently lose every notification, and
+ * background runs can't delete them before the sweep has seen them.
  */
 export async function drainPushOutbox(budgetMs = DRAIN_BUDGET_MS, opts: { removeGivenUp?: boolean } = {}) {
-  const result = { sent: 0, failed: 0, expired: 0, droppedStale: 0, gaveUp: 0 };
+  const result = { sent: 0, failed: 0, expired: 0, droppedStale: 0, gaveUp: 0, deadDevicesRemoved: 0 };
   if (!ensureConfigured()) return result;
   const deadline = Date.now() + budgetMs;
 
   result.droppedStale = (await prisma.pushOutbox.deleteMany({ where: { expiresAt: { lt: new Date() }, attempts: { lt: MAX_ATTEMPTS } } })).count;
   if (opts.removeGivenUp) {
-    result.gaveUp = (await prisma.pushOutbox.deleteMany({ where: { attempts: { gte: MAX_ATTEMPTS } } })).count;
+    // A device that keeps failing with something other than 404/410 (e.g. a 403 because it was
+    // subscribed under a different VAPID key pair — a local-dev subscription in the shared
+    // database, or any device after a key rotation) is just dead: if it's one of a few, remove it
+    // quietly, like an expired one. Only when failures are widespread — most likely the push setup
+    // itself is broken — are its pushes counted as `gaveUp` (the sweep then fails its job run), and
+    // then devices are deliberately kept, since removing everyone's would be destructive.
+    const givenUp = await prisma.pushOutbox.findMany({ where: { attempts: { gte: MAX_ATTEMPTS } }, select: { subscriptionId: true } });
+    if (givenUp.length > 0) {
+      const deadSubs = [...new Set(givenUp.map((g) => g.subscriptionId))];
+      const totalSubs = await prisma.pushSubscription.count();
+      if (deadSubs.length <= Math.max(2, Math.floor(totalSubs * 0.1))) {
+        // Deleting the device also removes its queued rows (cascade).
+        result.deadDevicesRemoved = (await prisma.pushSubscription.deleteMany({ where: { id: { in: deadSubs } } })).count;
+      } else {
+        result.gaveUp = (await prisma.pushOutbox.deleteMany({ where: { attempts: { gte: MAX_ATTEMPTS } } })).count;
+      }
+    }
   }
 
   while (Date.now() < deadline) {

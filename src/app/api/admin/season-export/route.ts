@@ -55,9 +55,12 @@ export async function POST(request: NextRequest) {
 
   const row = await prisma.season.findUniqueOrThrow({ where: { id: season.id }, select: { exportStatus: true } });
   if (parsed.data.action === "email" && row.exportStatus === "READY") {
-    const sent = await emailSeasonExportLinks(season);
-    if (!sent) {
-      return NextResponse.json({ error: "Couldn't send it — it may already be on its way. Try again in a few minutes." }, { status: 409 });
+    const email = await emailSeasonExportLinks(season);
+    if (email === "busy") {
+      return NextResponse.json({ error: "It's already being sent — check your inbox in a minute." }, { status: 409 });
+    }
+    if (email === "failed") {
+      return NextResponse.json({ error: "Couldn't send it just now — try again in a few minutes." }, { status: 502 });
     }
     return NextResponse.json({ status: "emailed" });
   }

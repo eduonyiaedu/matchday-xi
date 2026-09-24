@@ -23,13 +23,17 @@ export async function POST(request: NextRequest) {
   // A season export being built in the background (lib/season-export.ts) gets its next piece done
   // on each tick — only logged as a job run while one is actually in progress.
   const exportPending = (await prisma.season.count({ where: SEASON_EXPORT_PENDING })) > 0;
-  const [lockResult, notifyResult, exportResult] = await Promise.all([
+  // allSettled, not all: each job records its own success/failure on its JobRun (that's what
+  // /admin/jobs and the audits watch), so one job failing must neither cut the others short — a
+  // rejected Promise.all returns immediately and the platform can freeze the rest mid-run once the
+  // response is sent — nor make this whole route fail, which cron-job.org could count towards
+  // disabling the 5-minute schedule that lock-sweep itself depends on.
+  const [lock, notify, exported] = await Promise.allSettled([
     withJobRun("LOCK_SWEEP", lockSweep),
     withJobRun("NOTIFY_SWEEP", notifySweep),
-    // A failed export is recorded on its JobRun and the admin page — it mustn't fail this route.
-    exportPending
-      ? withJobRun("SEASON_EXPORT", async () => ({ seasonExports: await advanceSeasonExports(40_000) })).catch(() => null)
-      : null,
+    exportPending ? withJobRun("SEASON_EXPORT", async () => ({ seasonExports: await advanceSeasonExports(40_000) })) : null,
   ]);
-  return NextResponse.json({ ...lockResult, ...notifyResult, ...(exportResult ?? {}) });
+  const outcome = (r: PromiseSettledResult<unknown>) =>
+    r.status === "fulfilled" ? r.value : { error: r.reason instanceof Error ? r.reason.message : String(r.reason) };
+  return NextResponse.json({ lockSweep: outcome(lock), notifySweep: outcome(notify), seasonExport: outcome(exported) });
 }

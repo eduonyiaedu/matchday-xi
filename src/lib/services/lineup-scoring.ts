@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { scorePrediction } from "@/lib/scoring";
-import { sendPushToUsers } from "@/lib/push";
+import { queuePushes } from "@/lib/push";
 import { fixtureSeasonStatus, SEASON_TOTALS_LOCK, SeasonFrozenError } from "@/lib/seasons";
 import { chunked } from "@/lib/chunked";
 import type { LineupSource } from "@/generated/prisma/enums";
@@ -211,38 +211,35 @@ export async function applyOfficialLineup(
       where: { fixtureId },
       select: { userId: true, privateLeagueId: true },
     });
-    const userIdsByScope = new Map<string | null, string[]>();
+    const userIdsByScope = new Map<string | null, Set<string>>();
     for (const p of allPredictors) {
-      const ids = userIdsByScope.get(p.privateLeagueId) ?? [];
-      if (!ids.includes(p.userId)) ids.push(p.userId);
+      const ids = userIdsByScope.get(p.privateLeagueId) ?? new Set<string>();
+      ids.add(p.userId);
       userIdsByScope.set(p.privateLeagueId, ids);
     }
 
-    const globalUserIds = userIdsByScope.get(null);
-    if (globalUserIds && globalUserIds.length > 0) {
-      await sendPushToUsers(globalUserIds, {
-        title: "Matchday XI",
-        body: `Scoring is in\n${matchLabel} has been scored.`,
-        url: `/predict/${fixtureId}`,
-      });
-    }
-
     const leagueIds = [...userIdsByScope.keys()].filter((id): id is string => id !== null);
-    if (leagueIds.length > 0) {
-      const leagues = await prisma.privateLeague.findMany({
-        where: { id: { in: leagueIds } },
-        select: { id: true, name: true },
-      });
-      const leagueNameById = new Map(leagues.map((l) => [l.id, l.name]));
-      for (const leagueId of leagueIds) {
-        const leagueName = leagueNameById.get(leagueId) ?? "Private League";
-        await sendPushToUsers(userIdsByScope.get(leagueId)!, {
+    const leagues = leagueIds.length
+      ? await prisma.privateLeague.findMany({ where: { id: { in: leagueIds } }, select: { id: true, name: true } })
+      : [];
+    const leagueNameById = new Map(leagues.map((l) => [l.id, l.name]));
+
+    // The global push and every league's in ONE queue call (lib/push.ts): one transaction and one
+    // delivery run per fixture however many private leagues predicted it.
+    await queuePushes([
+      {
+        userIds: [...(userIdsByScope.get(null) ?? [])],
+        payload: { title: "Matchday XI", body: `Scoring is in\n${matchLabel} has been scored.`, url: `/predict/${fixtureId}` },
+      },
+      ...leagueIds.map((leagueId) => ({
+        userIds: [...userIdsByScope.get(leagueId)!],
+        payload: {
           title: "Matchday XI",
-          body: `Scoring is in\n${leagueName}: ${matchLabel} has been scored.`,
+          body: `Scoring is in\n${leagueNameById.get(leagueId) ?? "Private League"}: ${matchLabel} has been scored.`,
           url: `/leagues/${leagueId}/predict/${fixtureId}`,
-        });
-      }
-    }
+        },
+      })),
+    ]);
   }
 
   return { resolvedCount: resolvedPlayerIds.length, predictionsScored, justScored };
