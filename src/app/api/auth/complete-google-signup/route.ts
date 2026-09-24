@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
+import { assessNewAccount } from "@/lib/account-trust";
 
 export const runtime = "nodejs";
 
@@ -36,6 +37,9 @@ export async function POST(request: NextRequest) {
   const now = new Date();
   const displayName =
     (authUser.user_metadata?.full_name as string | undefined) ?? authUser.email?.split("@")[0] ?? "Player";
+  // Same duplicate/throwaway-account checks as every other sign-up path (lib/auth.ts) — this one
+  // used to skip them, so a Google account could be a second, unflagged prize entry.
+  const trust = await assessNewAccount(authUser.email ?? "");
 
   try {
     const user = await prisma.user.create({
@@ -46,6 +50,9 @@ export async function POST(request: NextRequest) {
         displayName,
         ageConfirmedAt: now,
         tosConsentedAt: now,
+        normalizedEmail: trust.normalizedEmail,
+        isFlaggedDuplicate: trust.flagReason !== null,
+        flagReason: trust.flagReason,
       },
     });
     return NextResponse.json({ user }, { status: 201 });

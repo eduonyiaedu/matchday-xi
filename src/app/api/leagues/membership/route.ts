@@ -27,13 +27,20 @@ export async function POST(request: NextRequest) {
   // Same lock key as /api/leagues/[id]/join, so an approval racing a concurrent join-request
   // upsert for this (league, user) pair serializes through one mutual-exclusion point instead of
   // each side reading stale state and the join's upsert clobbering this approval (or vice versa).
+  // Only a PENDING request can be answered — re-checked under the lock. Otherwise a creator could
+  // "deny" an already-approved member (dropping them from the standings) and let them re-join with
+  // a different club, getting round "your team is permanent once approved".
   const updated = await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"league-join:" + membership.leagueId + ":" + membership.userId}))`;
-    return tx.privateLeagueMembership.update({
-      where: { id: membership.id },
+    const { count } = await tx.privateLeagueMembership.updateMany({
+      where: { id: membership.id, status: "PENDING" },
       data: { status: parsed.data.approve ? "APPROVED" : "DENIED", respondedAt: new Date() },
     });
+    return count === 0 ? null : tx.privateLeagueMembership.findUniqueOrThrow({ where: { id: membership.id } });
   });
+  if (!updated) {
+    return NextResponse.json({ error: "This request has already been answered." }, { status: 409 });
+  }
 
   return NextResponse.json({ membership: updated });
 }

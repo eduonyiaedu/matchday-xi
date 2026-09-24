@@ -26,7 +26,19 @@ export function PushOptIn() {
       if (localStorage.getItem(DISMISSED_KEY)) return;
       const registration = await navigator.serviceWorker.ready;
       const existing = await registration.pushManager.getSubscription();
-      if (existing) return;
+      if (existing) {
+        // Already subscribed on this device: quietly re-save it (the server upserts), so a device
+        // the server dropped — e.g. after repeated delivery failures — re-registers on its own
+        // instead of silently never getting notifications again.
+        if (Notification.permission === "granted") {
+          fetch("/api/push/subscribe", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(existing.toJSON()),
+          }).catch(() => {});
+        }
+        return;
+      }
       setVisible(true);
     }
     check().catch(() => {});

@@ -691,6 +691,9 @@ model PushOutbox {
   /// Past this it's no longer worth delivering (a late "lock in 30 minutes" is worse than none).
   expiresAt      DateTime
   attempts       Int              @default(0)
+  /// HTTP status of the last failed attempt (0 = timeout/network). A device is only ever treated
+  /// as dead on a definite rejection of that device (400/401/403/413), never on an outage.
+  lastStatus     Int?
   /// Set while a delivery run is working on this row; a stale claim (a killed run) is retaken.
   claimedAt      DateTime?
   createdAt      DateTime         @default(now())

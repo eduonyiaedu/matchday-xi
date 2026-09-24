@@ -1,6 +1,13 @@
 import { prisma } from "@/lib/prisma";
 import { computeGlobalRank } from "@/lib/rank";
-import { ensureSeasonSnapshot, isSeasonClosed, listSeasons, seasonStandings } from "@/lib/seasons";
+import {
+  ensureSeasonSnapshot,
+  isSeasonClosed,
+  listSeasons,
+  seasonStandings,
+  type SeasonInfo,
+  type SeasonStandingRow,
+} from "@/lib/seasons";
 
 export interface LeaderboardRow {
   rank: number;
@@ -13,6 +20,20 @@ export interface LeaderboardRow {
 }
 
 const TOP_N = 100;
+
+const LIVE_STANDINGS_TTL_MS = 60_000;
+const liveStandingsCache = new Map<string, { at: number; value: Promise<SeasonStandingRow[]> }>();
+
+/** seasonStandings for a not-yet-closed past season, cached per server instance for a minute. */
+function liveSeasonStandings(season: SeasonInfo, teamId: string | undefined): Promise<SeasonStandingRow[]> {
+  const key = `${season.id}:${teamId ?? "all"}`;
+  const hit = liveStandingsCache.get(key);
+  if (hit && Date.now() - hit.at < LIVE_STANDINGS_TTL_MS) return hit.value;
+  const value = seasonStandings(season, { teamId });
+  liveStandingsCache.set(key, { at: Date.now(), value });
+  value.catch(() => liveStandingsCache.delete(key)); // never cache a failure
+  return value;
+}
 
 /**
  * Everything the global and per-club leaderboard pages show, for the chosen season. The current
@@ -70,8 +91,9 @@ export async function getLeaderboard(opts: {
       }
     }
   } else if (isPast && selected) {
-    // A previous season still awaiting its winners can still change, so it's computed live.
-    const standings = await seasonStandings(selected, { teamId: opts.teamId });
+    // A previous season still awaiting its winners can still change, so it's computed live — but
+    // reused for a minute: this page is public, and each computation reads the whole season.
+    const standings = await liveSeasonStandings(selected, opts.teamId);
     const all = standings.map((s, i) => ({
       rank: i + 1,
       userId: s.userId,

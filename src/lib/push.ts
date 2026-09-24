@@ -45,6 +45,8 @@ const SEND_TIMEOUT_MS = 10_000;
 const STALE_CLAIM_MS = 5 * 60 * 1000;
 /** Give up on a device after this many failed tries. */
 const MAX_ATTEMPTS = 5;
+/** A push service rejecting this particular device (not an outage) — see drainPushOutbox. */
+const DEVICE_REJECTED_STATUSES = new Set([400, 401, 403, 413]);
 /** How long one delivery run may keep starting new rounds; the 5-minute sweep picks up the rest. */
 const DRAIN_BUDGET_MS = 20_000;
 
@@ -140,10 +142,10 @@ async function runWithConcurrency<T>(items: T[], limit: number, fn: (item: T) =>
  * Delivered rows are deleted as it goes, so a run cut off mid-batch re-sends at most a handful.
  * Devices that come back expired (410/404) are deleted; failures are retried once their claim
  * goes stale (a back-off). Pushes that failed MAX_ATTEMPTS times are never claimed again; only
- * the 5-minute notify sweep passes `removeGivenUp`, which either removes the few dead devices
- * behind them (`deadDevicesRemoved`) or — when failures are widespread — counts them (`gaveUp`)
- * so the sweep fails its job run: a broken setup can't silently lose every notification, and
- * background runs can't delete them before the sweep has seen them.
+ * the 5-minute notify sweep passes `removeGivenUp`, which removes a minority of devices whose push
+ * service definitely rejected them (`deadDevicesRemoved`) and counts everything else (`gaveUp`)
+ * so the sweep fails its job run: a broken setup or an outage can't silently lose notifications or
+ * delete working phones, and background runs can't delete them before the sweep has seen them.
  */
 export async function drainPushOutbox(budgetMs = DRAIN_BUDGET_MS, opts: { removeGivenUp?: boolean } = {}) {
   const result = { sent: 0, failed: 0, expired: 0, droppedStale: 0, gaveUp: 0, deadDevicesRemoved: 0 };
@@ -152,22 +154,33 @@ export async function drainPushOutbox(budgetMs = DRAIN_BUDGET_MS, opts: { remove
 
   result.droppedStale = (await prisma.pushOutbox.deleteMany({ where: { expiresAt: { lt: new Date() }, attempts: { lt: MAX_ATTEMPTS } } })).count;
   if (opts.removeGivenUp) {
-    // A device that keeps failing with something other than 404/410 (e.g. a 403 because it was
-    // subscribed under a different VAPID key pair — a local-dev subscription in the shared
-    // database, or any device after a key rotation) is just dead: if it's one of a few, remove it
-    // quietly, like an expired one. Only when failures are widespread — most likely the push setup
-    // itself is broken — are its pushes counted as `gaveUp` (the sweep then fails its job run), and
-    // then devices are deliberately kept, since removing everyone's would be destructive.
-    const givenUp = await prisma.pushOutbox.findMany({ where: { attempts: { gte: MAX_ATTEMPTS } }, select: { subscriptionId: true } });
+    // A device is only treated as dead when its push service definitely rejected THAT device
+    // (400/401/403/413 on its last attempt — e.g. a 403 because it was subscribed under a different
+    // VAPID key pair, like a local-dev subscription in the shared database), and only while such
+    // devices are a minority of all devices: those are deleted quietly, like an expired one.
+    // Anything else is treated as a problem to surface, never a reason to delete: failures from an
+    // outage (5xx, 429, timeouts) or rejections of half or more of all devices (most likely the push
+    // setup itself — a rotated or wrong VAPID key would 403 everyone) are counted as `gaveUp`, the
+    // sweep fails its job run, and every device is kept. Deleting a working phone is permanent from
+    // the user's side until the app re-registers it (push-opt-in re-saves on every load).
+    const givenUp = await prisma.pushOutbox.findMany({
+      where: { attempts: { gte: MAX_ATTEMPTS } },
+      select: { id: true, subscriptionId: true, lastStatus: true },
+    });
     if (givenUp.length > 0) {
-      const deadSubs = [...new Set(givenUp.map((g) => g.subscriptionId))];
+      const definite = givenUp.filter((g) => g.lastStatus !== null && DEVICE_REJECTED_STATUSES.has(g.lastStatus));
+      const deadSubs = [...new Set(definite.map((g) => g.subscriptionId))];
       const totalSubs = await prisma.pushSubscription.count();
-      if (deadSubs.length <= Math.max(2, Math.floor(totalSubs * 0.1))) {
+      const removable = deadSubs.length > 0 && deadSubs.length * 2 < totalSubs;
+      if (removable) {
         // Deleting the device also removes its queued rows (cascade).
         result.deadDevicesRemoved = (await prisma.pushSubscription.deleteMany({ where: { id: { in: deadSubs } } })).count;
-      } else {
-        result.gaveUp = (await prisma.pushOutbox.deleteMany({ where: { attempts: { gte: MAX_ATTEMPTS } } })).count;
       }
+      result.gaveUp = (
+        await prisma.pushOutbox.deleteMany({
+          where: { attempts: { gte: MAX_ATTEMPTS }, ...(removable ? { subscriptionId: { notIn: deadSubs } } : {}) },
+        })
+      ).count;
     }
   }
 
@@ -193,7 +206,8 @@ export async function drainPushOutbox(budgetMs = DRAIN_BUDGET_MS, opts: { remove
     });
     const subById = new Map(subscriptions.map((s) => [s.id, s]));
     let pendingDelete: string[] = [];
-    const failed: string[] = [];
+    /** Failed row ids by the status they failed with (0 = timeout/network). */
+    const failedByStatus = new Map<number, string[]>();
     const expiredSubs = new Set<string>();
     const flushDelivered = async () => {
       if (pendingDelete.length === 0) return;
@@ -218,7 +232,8 @@ export async function drainPushOutbox(budgetMs = DRAIN_BUDGET_MS, opts: { remove
             expiredSubs.add(sub.id);
           } else {
             console.error("[push] send failed:", error);
-            failed.push(row.id);
+            const status = statusCode ?? 0;
+            failedByStatus.set(status, [...(failedByStatus.get(status) ?? []), row.id]);
           }
           return;
         }
@@ -233,10 +248,12 @@ export async function drainPushOutbox(budgetMs = DRAIN_BUDGET_MS, opts: { remove
     if (expiredSubs.size > 0) await prisma.pushSubscription.deleteMany({ where: { id: { in: [...expiredSubs] } } });
     // Failures keep their claim, so they're only retried once it goes stale (~5 minutes) — a
     // back-off, rather than hammering a struggling push service again within this same run.
-    for (const chunk of chunked(failed)) {
-      await prisma.pushOutbox.updateMany({ where: { id: { in: chunk } }, data: { attempts: { increment: 1 } } });
+    for (const [status, ids] of failedByStatus) {
+      for (const chunk of chunked(ids)) {
+        await prisma.pushOutbox.updateMany({ where: { id: { in: chunk } }, data: { attempts: { increment: 1 }, lastStatus: status } });
+      }
+      result.failed += ids.length;
     }
-    result.failed += failed.length;
     result.expired += expiredSubs.size;
   }
   return result;

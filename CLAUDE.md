@@ -64,6 +64,11 @@ whichever turned something up last time:
    that queries fixtures must add it too. Also remember `/leagues` lists *every* private league
    to *every* user, so a leftover test league is publicly visible — sweep for test users, leagues,
    and fixtures at the end of every round, not just the ones the current script created.
+   **The live 5-minute cron also acts on test rows mid-test** — not just fixtures: queued
+   `PushOutbox` rows, fake `PushSubscription`s, seasons with pending exports. Confirmed
+   2026-09-24: the live notify sweep processed a test's given-up push rows between two steps of
+   the test script. Expect such collisions (re-run before believing a one-off failure), and delete
+   any `JobRun` rows they leave behind so /admin/jobs and later audits aren't misled.
 7. Always ask before committing/pushing, even after a large multi-fix round.
 8. Before wrapping up, check whether anything learned this round is durable and non-obvious — if
    so, propose folding it into this file too, the same way step 7 asks about committing. Confirmed
@@ -146,12 +151,21 @@ transaction even reads. Three fix patterns are established here, depending on wh
   10s timeout per device, delivered rows deleted as it goes (a killed run re-sends at most a
   handful). Expired devices (410/404) are deleted; failures retry with back-off up to 5 times.
   **Only the sweep's drain (`removeGivenUp`) handles pushes that failed 5 times, and background
-  drains must not touch them.** If only a few devices are behind them (≤ max(2, 10% of all
-  subscriptions)) those devices are just dead — e.g. subscribed under a different VAPID key pair,
-  like a localhost subscription in the shared database — and are deleted quietly, like an expired
-  one. Only widespread failures (most likely the push setup itself is broken) fail the
-  NOTIFY_SWEEP job run, and then no devices are deleted — removing everyone's would be
-  destructive. One dead phone must never turn into a permanent alarm. Built for sends to tens of thousands of fans, which used to be one `Promise.all` in one
+  drains must not touch them.** A device is deleted only when (a) its push service *definitely
+  rejected that device* on the last attempt (`PushOutbox.lastStatus` 400/401/403/413 — e.g. a 403
+  because it was subscribed under a different VAPID key pair, like a localhost subscription in the
+  shared database) AND (b) such devices are fewer than half of all devices. Everything else —
+  outages (5xx, 429, timeouts = `lastStatus` 0) or rejections of half or more (a rotated/wrong
+  VAPID key 403s everyone) — keeps every device and fails the NOTIFY_SWEEP job run instead.
+  Deleting a working phone is silent and, from the user's side, permanent — so the Home screen's
+  push-opt-in quietly re-saves an existing subscription on every load (the route upserts), letting
+  a wrongly removed device re-register. Confirmed 2026-09-24: an earlier, count-only rule deleted
+  a device that was only failing because of a (simulated) outage.
+- **`/api/push/subscribe` only accepts real browser push-service endpoints** (https on FCM,
+  Mozilla, `*.push.apple.com`, `*.notify.windows.com`), bounded key lengths, and keeps at most 5
+  devices per account (oldest dropped). The server POSTs to whatever endpoint is stored, so an
+  arbitrary URL let any signed-in user make it call slow/hostile/internal hosts and clog the queue
+  for everyone. Test fixtures that need fake devices must insert `PushSubscription` rows directly. Built for sends to tens of thousands of fans, which used to be one `Promise.all` in one
   60-second function.
 - **For anything that notifies users, keep "who gets what" separate from actually sending.** The
   founder's phone is the only real device with push enabled, and the database is shared with live
@@ -263,6 +277,13 @@ transaction even reads. Three fix patterns are established here, depending on wh
   scored and the result after, so players who'd opened it at lock time kept the stale pre-score
   card from their browser cache. Fixed with short/longer `s-maxage` by state (cached on Vercel's
   CDN, so a viral card is drawn once) plus `cache: "no-cache"` on the in-app fetch.
+- **Never validate a redirect target by how the string starts — resolve it and check where it
+  lands.** `safeRedirectPath` (lib/safe-redirect.ts) used to accept anything starting with one
+  "/", but browsers treat "\" as "/" and silently drop tabs/newlines, so `/\evil.example` and
+  `/<TAB>/evil.example` both went to evil.example — a real open redirect after Google/magic-link
+  sign-in via `?next=` (confirmed 2026-09-24). It now rejects backslashes/control characters and
+  resolves the value against a placeholder origin, accepting it only if the origin is unchanged.
+  Every caller-supplied redirect must go through it.
 - A long-running `next dev` process does **not** pick up a regenerated Prisma client after
   `prisma db push` + `generate` — it needs a hard restart, or every query referencing a new
   field/model throws a validation error that looks like a real bug but isn't.
